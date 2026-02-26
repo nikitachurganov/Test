@@ -1,135 +1,207 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Popconfirm, Space, Table, notification } from 'antd';
-import type { TableProps } from 'antd';
+import { useEffect, useState } from 'react';
+import { Alert, Button, Card, Empty, Spin, Typography, theme } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { useFormsStore } from '../shared/store/forms.store';
-import type { FormSchema } from '../shared/types/form-schema.types';
+import { getForms, type FormResponse } from '../shared/api/forms.api';
+
+const { Text, Title } = Typography;
+
+// ─── Individual form card ────────────────────────────────────────────────────
+
+interface FormCardProps {
+  form: FormResponse;
+  onOpen: (id: string) => void;
+}
+
+const FormCard = ({ form, onOpen }: FormCardProps) => {
+  const { token } = theme.useToken();
+
+  const createdAt = new Date(form.created_at).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  return (
+    <Card
+      hoverable
+      style={{ display: 'flex', flexDirection: 'column' }}
+      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', gap: 8 } }}
+      actions={[
+        <Button key="open" type="link" onClick={() => onOpen(form.id)}>
+          Редактировать
+        </Button>,
+      ]}
+    >
+      <Title
+        level={5}
+        style={{ margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+        title={form.name}
+      >
+        {form.name}
+      </Title>
+
+      {form.description ? (
+        <Text
+          type="secondary"
+          style={{
+            fontSize: token.fontSizeSM,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {form.description}
+        </Text>
+      ) : (
+        <Text type="secondary" italic style={{ fontSize: token.fontSizeSM }}>
+          Без описания
+        </Text>
+      )}
+
+      <div style={{ marginTop: 'auto', paddingTop: 8 }}>
+        <Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
+          {form.fields.length} {pluralizeFields(form.fields.length)} · {createdAt}
+        </Text>
+      </div>
+    </Card>
+  );
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function pluralizeFields(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'поле';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'поля';
+  return 'полей';
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export const FormsPage = () => {
-  const [notificationApi, contextHolder] = notification.useNotification();
   const navigate = useNavigate();
-  const forms = useFormsStore((state) => state.forms);
-  const deleteForm = useFormsStore((state) => state.deleteForm);
-  const tableContainerRef = useRef<HTMLDivElement | null>(null);
-  const [tableScrollY, setTableScrollY] = useState(0);
+
+  const [forms, setForms] = useState<FormResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const container = tableContainerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const updateHeight = () => {
-      setTableScrollY(container.clientHeight);
-    };
-
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateHeight();
-    });
-
-    resizeObserver.observe(container);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
+    setLoading(true);
+    getForms()
+      .then((data) => {
+        setForms(data);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error ? err.message : 'Не удалось загрузить формы',
+        );
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      deleteForm(id);
-      notificationApi.success({
-        message: 'Форма удалена',
-        description: 'Форма была успешно удалена.',
-      });
-    },
-    [deleteForm, notificationApi],
-  );
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div
+          style={{
+            display: 'flex',
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Spin size="large" />
+        </div>
+      );
+    }
 
-  const columns = useMemo<TableProps<FormSchema>['columns']>(
-    () => [
-      {
-        title: 'Название',
-        dataIndex: 'title',
-        key: 'title',
-      },
-      {
-        title: 'Описание',
-        dataIndex: 'description',
-        key: 'description',
-      },
-      {
-        title: 'Дата создания',
-        dataIndex: 'createdAt',
-        key: 'createdAt',
-        render: (createdAt: string) => new Date(createdAt).toLocaleString('ru-RU'),
-      },
-      {
-        title: 'Действия',
-        key: 'actions',
-        render: (_: unknown, record: FormSchema) => (
-          <Space>
-            <Button onClick={() => navigate(`/forms/${record.id}/edit`)}>
-              Редактировать
-            </Button>
-            <Popconfirm
-              title="Удалить форму?"
-              description="Это действие нельзя отменить."
-              okText="Удалить"
-              cancelText="Отмена"
-              onConfirm={() => handleDelete(record.id)}
-            >
-              <Button danger>Удалить</Button>
-            </Popconfirm>
-          </Space>
-        ),
-      },
-    ],
-    [handleDelete, navigate],
-  );
+    if (error) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          message="Ошибка загрузки"
+          description={error}
+          style={{ margin: '8px 0' }}
+        />
+      );
+    }
+
+    if (forms.length === 0) {
+      return (
+        <div
+          style={{
+            display: 'flex',
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Empty
+            description="Форм пока нет. Создайте первую!"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 16,
+          alignContent: 'start',
+        }}
+      >
+        {forms.map((form) => (
+          <FormCard
+            key={form.id}
+            form={form}
+            onOpen={(id) => navigate(`/forms/${id}/edit`)}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div style={{ display: 'flex', flex: 1, height: '100%', minHeight: 0 }}>
-      {contextHolder}
       <Card
         title="Формы"
         extra={
-          <Button type="primary" onClick={() => navigate('/forms/create')}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/forms/create')}
+          >
             Создать форму
           </Button>
         }
         style={{
           display: 'flex',
           flex: 1,
-          height: '100%',
-          minHeight: 0,
           flexDirection: 'column',
+          minHeight: 0,
         }}
         styles={{
           body: {
             display: 'flex',
             flex: 1,
-            minHeight: 0,
             flexDirection: 'column',
+            minHeight: 0,
+            overflowY: 'auto',
+            padding: 24,
           },
         }}
       >
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <div
-            ref={tableContainerRef}
-            style={{ display: 'flex', flex: 1, minHeight: 0 }}
-          >
-            <Table<FormSchema>
-              rowKey="id"
-              columns={columns}
-              dataSource={forms}
-              pagination={false}
-              scroll={{ y: tableScrollY }}
-              style={{ width: '100%', flex: 1, minHeight: 0 }}
-            />
-          </div>
-        </div>
+        {renderContent()}
       </Card>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Breadcrumb, Button, Card, Input, Space, Typography, theme } from 'antd';
+import { Breadcrumb, Button, Card, Input, Space, Typography, notification, theme } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -25,6 +25,10 @@ import {
   type FormFieldInstance,
   type FormFieldType,
 } from '../shared/types/form-builder.types';
+import {
+  createForm as createFormApi,
+  type CreateFormFieldPayload,
+} from '../shared/api/forms.api';
 
 const { Title } = Typography;
 
@@ -112,6 +116,29 @@ const createField = (type: FormFieldType): FormFieldInstance => ({
   children: type === 'group' ? [] : undefined,
 });
 
+/**
+ * Recursively maps the canvas FormFieldInstance tree to the flat payload
+ * shape the backend expects.  Group children are preserved as a nested array
+ * so the full structure round-trips correctly.
+ */
+const mapFieldsToPayload = (
+  instances: FormFieldInstance[],
+): CreateFormFieldPayload[] =>
+  instances.map((inst) => ({
+    type: inst.type,
+    label: inst.label,
+    // `description` is the field's hint text — stored as `placeholder` in the API
+    placeholder: inst.description || undefined,
+    required: inst.required,
+    // Convert FieldOption objects to plain label strings
+    options: inst.options?.map((opt) => opt.label),
+    // Recursively include children for group-type fields
+    children:
+      inst.type === 'group' && inst.children?.length
+        ? mapFieldsToPayload(inst.children)
+        : undefined,
+  }));
+
 // ─── CreateFormPage ──────────────────────────────────────────────────────────
 
 export const CreateFormPage = () => {
@@ -121,6 +148,7 @@ export const CreateFormPage = () => {
   const [formTitle, setFormTitle] = useState<string>('');
   const [fields, setFields] = useState<FormFieldInstance[]>([]);
   const [activeDrag, setActiveDrag] = useState<ActiveDragInfo>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -309,9 +337,41 @@ export const CreateFormPage = () => {
     return null;
   };
 
-  const handleSave = () => {
-    // TODO: implement save logic
-  };
+  const handleSave = useCallback(async () => {
+    if (!formTitle.trim()) {
+      notification.warning({
+        message: 'Необходимо указать название',
+        description: 'Введите название формы перед сохранением.',
+        placement: 'topRight',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await createFormApi({
+        name: formTitle.trim(),
+        fields: mapFieldsToPayload(fields),
+      });
+
+      notification.success({
+        message: 'Форма сохранена',
+        description: `Форма «${formTitle.trim()}» успешно создана.`,
+        placement: 'topRight',
+      });
+
+      navigate('/forms');
+    } catch (err) {
+      notification.error({
+        message: 'Ошибка при сохранении',
+        description:
+          err instanceof Error ? err.message : 'Не удалось сохранить форму.',
+        placement: 'topRight',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formTitle, fields, navigate]);
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -361,7 +421,12 @@ export const CreateFormPage = () => {
               </Title>
             </Space>
 
-            <Button type="primary" onClick={handleSave}>
+            <Button
+              type="primary"
+              onClick={handleSave}
+              loading={isSaving}
+              disabled={isSaving}
+            >
               Сохранить
             </Button>
           </div>

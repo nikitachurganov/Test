@@ -1,4 +1,5 @@
 import { Layout, Menu, Switch, Typography, theme } from 'antd';
+import { GlobalScrollbarStyles } from './shared/ui/GlobalScrollbarStyles';
 import { MoonOutlined, SunOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import {
@@ -56,6 +57,8 @@ const AppLayout = () => {
   };
 
   return (
+    <>
+    <GlobalScrollbarStyles />
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Sider width={240} theme="dark">
         {/*
@@ -144,6 +147,7 @@ const AppLayout = () => {
         </Content>
       </Layout>
     </Layout>
+    </>
   );
 };
 
