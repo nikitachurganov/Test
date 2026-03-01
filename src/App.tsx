@@ -14,6 +14,7 @@ import { useThemeMode } from './shared/context/theme.context';
 import { CreateFormPage } from './pages/CreateFormPage';
 import { EditFormPage } from './pages/EditFormPage';
 import { EmployeesPage } from './pages/EmployeesPage';
+import { FormViewPage } from './pages/FormViewPage';
 import { FormsPage } from './pages/FormsPage';
 import { RequestsPage } from './pages/RequestsPage';
 
@@ -171,6 +172,10 @@ const router = createBrowserRouter([
       {
         path: 'forms/create',
         element: <CreateFormPage />,
+      },
+      {
+        path: 'forms/:id',
+        element: <FormViewPage />,
       },
       {
         path: 'forms/:id/edit',

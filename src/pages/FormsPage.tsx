@@ -11,7 +11,7 @@ import {
 } from 'antd';
 import type { TableProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { deleteForm, getForms, type FormResponse } from '../shared/api/forms.api';
 
 const { Title } = Typography;
@@ -83,7 +83,12 @@ export const FormsPage = () => {
         title: 'Название',
         dataIndex: 'name',
         key: 'name',
-        ellipsis: true,
+        minWidth: 360,
+        render: (_: unknown, record: FormResponse) => (
+          <Link to={`/forms/${record.id}`} style={{ fontWeight: 500 }}>
+            {record.name}
+          </Link>
+        ),
       },
       {
         title: 'Автор',

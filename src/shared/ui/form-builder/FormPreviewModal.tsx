@@ -37,7 +37,7 @@ interface PreviewFieldProps {
   field: FormFieldInstance;
 }
 
-const PreviewField = ({ field }: PreviewFieldProps) => {
+export const PreviewField = ({ field }: PreviewFieldProps) => {
   const { token } = theme.useToken();
 
   // ── Group: render as a titled section with nested fields ─────────────────

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import { Breadcrumb, Button, Card, Input, Space, Typography, notification, theme } from 'antd';
-import { ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons';
+import { Breadcrumb, Button, Card, Divider, Form, Input, Space, Tag, Typography, notification, theme } from 'antd';
+import { ArrowLeftOutlined, EyeOutlined, SendOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -29,7 +29,7 @@ import {
   createForm as createFormApi,
   type CreateFormFieldPayload,
 } from '../shared/api/forms.api';
-import { FormPreviewModal } from '../shared/ui/form-builder/FormPreviewModal';
+import { PreviewField } from '../shared/ui/form-builder/FormPreviewModal';
 
 const { Title } = Typography;
 
@@ -384,6 +384,7 @@ export const CreateFormPage = () => {
           flexDirection: 'column',
           height: '100%',
           minHeight: 0,
+          position: 'relative',
         }}
       >
         {/* ── Page header ── */}
@@ -503,12 +504,79 @@ export const CreateFormPage = () => {
 
       <DragOverlay dropAnimation={null}>{renderOverlay()}</DragOverlay>
 
-      <FormPreviewModal
-        open={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
-        formTitle={formTitle}
-        fields={fields}
-      />
+      {/* ── Full-content-area preview overlay ── */}
+      {isPreviewOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 100,
+            display: 'flex',
+            flexDirection: 'column',
+            background: token.colorBgLayout,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Overlay header — same structure as page header */}
+          <div
+            style={{
+              background: token.colorBgContainer,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+              padding: '12px 24px 16px',
+              flexShrink: 0,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <Space align="center" size={12}>
+              <Title level={4} style={{ margin: 0 }}>
+                Предпросмотр формы
+              </Title>
+              <Tag color="blue" style={{ fontWeight: 400 }}>
+                Только просмотр
+              </Tag>
+            </Space>
+            <Button onClick={() => setIsPreviewOpen(false)}>Закрыть</Button>
+          </div>
+
+          {/* Scrollable form content */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              padding: 24,
+            }}
+          >
+            <div style={{ maxWidth: 680, margin: '0 auto' }}>
+              {formTitle && (
+                <Title level={4} style={{ marginBottom: 24 }}>
+                  {formTitle}
+                </Title>
+              )}
+
+              {fields.length > 0 ? (
+                <Form layout="vertical" requiredMark="optional">
+                  {fields.map((field) => (
+                    <PreviewField key={field.id} field={field} />
+                  ))}
+                  <Divider style={{ marginTop: 8 }} />
+                  <Button type="primary" icon={<SendOutlined />} disabled block>
+                    Отправить
+                  </Button>
+                </Form>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                  <Typography.Text type="secondary">
+                    В форму не добавлено ни одного поля.
+                  </Typography.Text>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </DndContext>
   );
 };
