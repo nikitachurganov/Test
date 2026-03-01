@@ -1,28 +1,27 @@
-/** Backend base URL — set VITE_API_URL in .env to override */
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+import { supabase } from '../lib/supabase';
 
-// ─── Request / Response types ────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-/** Shape of a single field as the backend expects it */
+/** Shape of a single field stored in Supabase (jsonb column) */
 export interface CreateFormFieldPayload {
   type: string;
   label: string;
   placeholder?: string;
   required: boolean;
-  /** Labels of selectable options (for radio / checkbox / dropdown) */
+  /** Labels of selectable options (radio / checkbox / dropdown) */
   options?: string[];
   /** Child fields — only present for group-type fields */
   children?: CreateFormFieldPayload[];
 }
 
-/** Body for POST /api/forms */
+/** Body used when inserting a new form */
 export interface CreateFormPayload {
   name: string;
   description?: string;
   fields: CreateFormFieldPayload[];
 }
 
-/** Shape returned by the server after creating a form */
+/** Row returned from the `forms` table */
 export interface FormResponse {
   id: string;
   name: string;
@@ -32,30 +31,33 @@ export interface FormResponse {
   updated_at: string;
 }
 
-// ─── Core fetch helper ───────────────────────────────────────────────────────
+// ─── API ──────────────────────────────────────────────────────────────────────
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
+export const getForms = async (): Promise<FormResponse[]> => {
+  const { data, error } = await supabase
+    .from('forms')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-  if (!res.ok) {
-    // Try to surface the server's own error message
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
+  if (error) throw new Error(error.message);
+  return (data ?? []) as FormResponse[];
+};
 
-  return res.json() as Promise<T>;
-}
+export const createForm = async (
+  payload: CreateFormPayload,
+): Promise<FormResponse> => {
+  const { data, error } = await supabase
+    .from('forms')
+    .insert([
+      {
+        name: payload.name,
+        description: payload.description ?? null,
+        fields: payload.fields,
+      },
+    ])
+    .select()
+    .single();
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-export const getForms = (): Promise<FormResponse[]> =>
-  request<FormResponse[]>('/api/forms');
-
-export const createForm = (payload: CreateFormPayload): Promise<FormResponse> =>
-  request<FormResponse>('/api/forms', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  if (error) throw new Error(error.message);
+  return data as FormResponse;
+};

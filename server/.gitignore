@@ -1,5 +1,0 @@
-node_modules/
-dist/
-.env
-# Persisted form data — do not commit
-data/
