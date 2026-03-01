@@ -61,3 +61,8 @@ export const createForm = async (
   if (error) throw new Error(error.message);
   return data as FormResponse;
 };
+
+export const deleteForm = async (id: string): Promise<void> => {
+  const { error } = await supabase.from('forms').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+};
