@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Breadcrumb, Button, Card, Input, Space, Typography, notification, theme } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -29,6 +29,7 @@ import {
   createForm as createFormApi,
   type CreateFormFieldPayload,
 } from '../shared/api/forms.api';
+import { FormPreviewModal } from '../shared/ui/form-builder/FormPreviewModal';
 
 const { Title } = Typography;
 
@@ -149,6 +150,7 @@ export const CreateFormPage = () => {
   const [fields, setFields] = useState<FormFieldInstance[]>([]);
   const [activeDrag, setActiveDrag] = useState<ActiveDragInfo>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -421,14 +423,23 @@ export const CreateFormPage = () => {
               </Title>
             </Space>
 
-            <Button
-              type="primary"
-              onClick={handleSave}
-              loading={isSaving}
-              disabled={isSaving}
-            >
-              Сохранить
-            </Button>
+            <Space>
+              <Button
+                icon={<EyeOutlined />}
+                onClick={() => setIsPreviewOpen(true)}
+                disabled={isSaving}
+              >
+                Предпросмотр
+              </Button>
+              <Button
+                type="primary"
+                onClick={handleSave}
+                loading={isSaving}
+                disabled={isSaving}
+              >
+                Сохранить
+              </Button>
+            </Space>
           </div>
         </div>
 
@@ -491,6 +502,13 @@ export const CreateFormPage = () => {
       </div>
 
       <DragOverlay dropAnimation={null}>{renderOverlay()}</DragOverlay>
+
+      <FormPreviewModal
+        open={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        formTitle={formTitle}
+        fields={fields}
+      />
     </DndContext>
   );
 };
