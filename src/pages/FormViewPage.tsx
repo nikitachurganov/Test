@@ -22,37 +22,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   deleteForm,
   getFormById,
-  type CreateFormFieldPayload,
+  payloadToInstance,
   type FormResponse,
 } from '../shared/api/forms.api';
 import { PreviewField } from '../shared/ui/form-builder/FormPreviewModal';
-import type {
-  FieldOption,
-  FormFieldInstance,
-  FormFieldType,
-} from '../shared/types/form-builder.types';
+import type { FormFieldInstance } from '../shared/types/form-builder.types';
 
 const { Title, Text } = Typography;
-
-// ─── Converter ────────────────────────────────────────────────────────────────
-// Maps the flat API payload shape back to FormFieldInstance so PreviewField
-// can render it without duplicating any field-rendering logic.
-
-function payloadToInstance(payload: CreateFormFieldPayload): FormFieldInstance {
-  return {
-    id: crypto.randomUUID(),
-    type: payload.type as FormFieldType,
-    label: payload.label,
-    // description was stored as placeholder by mapFieldsToPayload
-    description: payload.placeholder ?? '',
-    required: payload.required,
-    options: payload.options?.map((label): FieldOption => ({
-      id: crypto.randomUUID(),
-      label,
-    })),
-    children: payload.children?.map(payloadToInstance),
-  };
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 

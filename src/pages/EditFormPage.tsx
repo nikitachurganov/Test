@@ -1,96 +1,101 @@
-import { useEffect, useMemo } from 'react';
-import { Button, Card, Empty, Form, Input, Space, notification } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Spin, notification, theme } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useFormsStore } from '../shared/store/forms.store';
-
-interface EditFormValues {
-  title: string;
-  description: string;
-}
+import {
+  getFormById,
+  updateForm,
+  mapFieldsToPayload,
+  payloadToInstance,
+  type FormResponse,
+} from '../shared/api/forms.api';
+import { FormEditor } from '../shared/ui/form-builder/FormEditor';
+import type { FormFieldInstance } from '../shared/types/form-builder.types';
 
 export const EditFormPage = () => {
-  const [notificationApi, contextHolder] = notification.useNotification();
-  const [form] = Form.useForm<EditFormValues>();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const forms = useFormsStore((state) => state.forms);
-  const updateForm = useFormsStore((state) => state.updateForm);
+  const { token } = theme.useToken();
 
-  const formSchema = useMemo(
-    () => forms.find((item) => item.id === id),
-    [id, forms],
-  );
+  const [formData, setFormData] = useState<FormResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!formSchema) {
-      return;
-    }
+    if (!id) return;
+    setLoading(true);
+    getFormById(id)
+      .then((data) => {
+        setFormData(data);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Не удалось загрузить форму');
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
 
-    form.setFieldsValue({
-      title: formSchema.title,
-      description: formSchema.description,
+  // Convert stored payload fields → FormFieldInstance once per load.
+  // FormEditor is only mounted after loading finishes, so these are stable.
+  const initialFields = useMemo<FormFieldInstance[]>(
+    () => (formData?.fields ?? []).map(payloadToInstance),
+    [formData],
+  );
+
+  const handleSave = async (title: string, fields: FormFieldInstance[]) => {
+    if (!id) return;
+
+    await updateForm(id, {
+      name: title,
+      fields: mapFieldsToPayload(fields),
     });
-  }, [form, formSchema]);
 
-  const handleFinish = (values: EditFormValues) => {
-    if (!id) {
-      return;
-    }
-
-    updateForm(id, {
-      title: values.title,
-      description: values.description,
-    });
-
-    notificationApi.success({
+    notification.success({
       message: 'Форма обновлена',
-      description: 'Изменения формы успешно сохранены.',
+      description: `Форма «${title}» успешно обновлена.`,
+      placement: 'topRight',
     });
 
-    navigate('/forms');
+    navigate(`/forms/${id}`);
   };
 
-  if (!formSchema) {
+  if (loading) {
     return (
-      <Card title="Редактирование формы">
-        {contextHolder}
-        <Empty description="Форма не найдена" />
-        <Button style={{ marginTop: 16 }} onClick={() => navigate('/forms')}>
-          Вернуться к списку
-        </Button>
-      </Card>
+      <div
+        style={{
+          display: 'flex',
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: token.colorBgLayout,
+        }}
+      >
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (error || !formData) {
+    return (
+      <div style={{ padding: 24, background: token.colorBgLayout, flex: 1 }}>
+        <Alert
+          type="error"
+          showIcon
+          message="Ошибка загрузки"
+          description={error ?? 'Форма не найдена'}
+        />
+      </div>
     );
   }
 
   return (
-    <Card title="Редактирование формы">
-      {contextHolder}
-      <Form form={form} layout="vertical" onFinish={handleFinish}>
-        <Form.Item<EditFormValues>
-          label="Название"
-          name="title"
-          rules={[{ required: true, message: 'Введите название формы' }]}
-        >
-          <Input />
-        </Form.Item>
-
-        <Form.Item<EditFormValues>
-          label="Описание"
-          name="description"
-          rules={[{ required: true, message: 'Введите описание формы' }]}
-        >
-          <Input.TextArea rows={4} />
-        </Form.Item>
-
-        <Form.Item style={{ marginBottom: 0 }}>
-          <Space>
-            <Button type="primary" onClick={() => form.submit()}>
-              Сохранить
-            </Button>
-            <Button onClick={() => navigate('/forms')}>Отмена</Button>
-          </Space>
-        </Form.Item>
-      </Form>
-    </Card>
+    <FormEditor
+      breadcrumbLabel="Редактирование формы"
+      pageTitle="Редактирование формы"
+      saveButtonLabel="Обновить"
+      initialTitle={formData.name}
+      initialFields={initialFields}
+      onSave={handleSave}
+      onBack={() => navigate('/forms')}
+    />
   );
 };
