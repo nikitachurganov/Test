@@ -12,7 +12,7 @@ import {
   notification,
   theme,
 } from 'antd';
-import { ArrowLeftOutlined, DeleteOutlined, EyeOutlined, SendOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, EyeOutlined, SendOutlined } from '@ant-design/icons';
 import {
   DndContext,
   DragOverlay,
@@ -177,7 +177,7 @@ const ToolPanelDropZone = ({ isCanvasDragging, children }: ToolPanelDropZoneProp
           borderTop: 'none',
           borderBottom: 'none',
           borderLeft: 'none',
-          borderRight: `1px solid ${deleteMode ? token.colorError : token.colorBorderSecondary}`,
+          borderRight: `1px solid ${token.colorBorderSecondary}`,
           background: deleteMode ? token.colorErrorBg : token.colorBgContainer,
           transition: 'background 0.15s ease, border-color 0.15s ease',
         }}
