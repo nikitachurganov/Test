@@ -92,13 +92,13 @@ const ALL_FIELDS: FieldTypeItem[] = [
   {
     key: 'select',
     label: 'Выпадающий список',
-    iconName: 'material-symbols:arrow-drop-down-circle-outline',
+    iconName: 'material-symbols-light:arrow-drop-down-rounded',
     category: 'Основные поля',
   },
   {
     key: 'checkbox',
     label: 'Несколько вариантов',
-    iconName: 'material-symbols:check-box-outline',
+    iconName: 'material-symbols-light:library-add-check-rounded',
     category: 'Основные поля',
   },
   {
@@ -128,13 +128,13 @@ const ALL_FIELDS: FieldTypeItem[] = [
   {
     key: 'phone',
     label: 'Номер телефона',
-    iconName: 'material-symbols:phone',
+    iconName: 'material-symbols-light:phone-enabled',
     category: 'Контактная информация',
   },
   {
     key: 'email',
     label: 'Электронная почта',
-    iconName: 'material-symbols:alternate-email',
+    iconName: 'material-symbols-light:mail-rounded',
     category: 'Контактная информация',
   },
   {
@@ -156,9 +156,21 @@ const ALL_FIELDS: FieldTypeItem[] = [
     category: 'Дата и время',
   },
   {
-    key: 'fileUpload',
-    label: 'Загрузка файла',
-    iconName: 'material-symbols:upload-file',
+    key: 'fileVector',
+    label: 'Векторные файлы',
+    iconName: 'material-symbols-light:polyline-rounded',
+    category: 'Поля загрузки файлов',
+  },
+  {
+    key: 'fileImage',
+    label: 'Изображения',
+    iconName: 'material-symbols-light:image-rounded',
+    category: 'Поля загрузки файлов',
+  },
+  {
+    key: 'fileDocument',
+    label: 'Документы',
+    iconName: 'material-symbols-light:docs-rounded',
     category: 'Поля загрузки файлов',
   },
   {
@@ -172,7 +184,12 @@ const ALL_FIELDS: FieldTypeItem[] = [
 // Unique categories in declaration order
 const CATEGORIES = [...new Set(ALL_FIELDS.map((f) => f.category))];
 
-export const ToolPanel = () => {
+interface ToolPanelProps {
+  /** When true, layout switches to a single column (for narrow sidebar). */
+  isCompact?: boolean;
+}
+
+export const ToolPanel = ({ isCompact = false }: ToolPanelProps) => {
   const [search, setSearch] = useState('');
   const { token } = theme.useToken();
 
@@ -255,7 +272,9 @@ export const ToolPanel = () => {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gridTemplateColumns: isCompact
+                    ? '1fr'
+                    : 'repeat(2, minmax(0, 1fr))',
                   rowGap: 4,
                   columnGap: 8,
                 }}

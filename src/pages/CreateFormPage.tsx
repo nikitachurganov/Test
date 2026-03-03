@@ -1,16 +1,16 @@
 import { notification } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { createForm, mapFieldsToPayload } from '../shared/api/forms.api';
+import { createForm, mapPagesToPayload } from '../shared/api/forms.api';
 import { FormEditor } from '../shared/ui/form-builder/FormEditor';
-import type { FormFieldInstance } from '../shared/types/form-builder.types';
+import type { FormPageInstance } from '../shared/types/form-builder.types';
 
 export const CreateFormPage = () => {
   const navigate = useNavigate();
 
-  const handleSave = async (title: string, fields: FormFieldInstance[]) => {
+  const handleSave = async (title: string, pages: FormPageInstance[]) => {
     await createForm({
       name: title,
-      fields: mapFieldsToPayload(fields),
+      pages: mapPagesToPayload(pages),
     });
 
     notification.success({

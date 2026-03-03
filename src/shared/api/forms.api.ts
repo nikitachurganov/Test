@@ -3,11 +3,12 @@ import type {
   FieldOption,
   FormFieldInstance,
   FormFieldType,
+  FormPageInstance,
 } from '../types/form-builder.types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/** Shape of a single field stored in Supabase (jsonb column) */
+/** Shape of a single field stored inside a page (jsonb column) */
 export interface CreateFormFieldPayload {
   type: string;
   label: string;
@@ -19,26 +20,43 @@ export interface CreateFormFieldPayload {
   children?: CreateFormFieldPayload[];
 }
 
+/** Single page (step) stored in Supabase JSON column */
+export interface CreateFormPagePayload {
+  id: string;
+  title: string;
+  fields: CreateFormFieldPayload[];
+}
+
 /** Body used when inserting a new form */
 export interface CreateFormPayload {
   name: string;
   description?: string;
-  fields: CreateFormFieldPayload[];
+  pages: CreateFormPagePayload[];
 }
 
 /** Body used when updating an existing form */
 export interface UpdateFormPayload {
   name: string;
   description?: string;
-  fields: CreateFormFieldPayload[];
+  pages: CreateFormPagePayload[];
 }
 
-/** Row returned from the `forms` table */
+/** Normalized form shape used across the app */
 export interface FormResponse {
   id: string;
   name: string;
   description: string;
-  fields: CreateFormFieldPayload[];
+  pages: CreateFormPagePayload[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Raw row returned from the `forms` table */
+interface DbFormRow {
+  id: string;
+  name: string;
+  description: string | null;
+  fields: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -46,8 +64,8 @@ export interface FormResponse {
 // ─── Field converters ─────────────────────────────────────────────────────────
 
 /**
- * Recursively maps the canvas FormFieldInstance tree to the flat payload
- * shape the API / Supabase column expects.
+ * Recursively maps a list of FormFieldInstance objects to the flat payload
+ * shape the API / Supabase column expects (used inside pages).
  */
 export const mapFieldsToPayload = (
   instances: FormFieldInstance[],
@@ -76,9 +94,15 @@ export const mapFieldsToPayload = (
 export function payloadToInstance(
   payload: CreateFormFieldPayload,
 ): FormFieldInstance {
+  const rawType = payload.type;
+  const normalizedType =
+    rawType === 'fileUpload' || rawType === 'file'
+      ? 'file_document'
+      : (rawType as FormFieldType);
+
   return {
     id: crypto.randomUUID(),
-    type: payload.type as FormFieldType,
+    type: normalizedType as FormFieldType,
     label: payload.label,
     description: payload.placeholder ?? '',
     required: payload.required,
@@ -90,6 +114,65 @@ export function payloadToInstance(
   };
 }
 
+/**
+ * Maps the in-app page tree to the API payload structure.
+ */
+export const mapPagesToPayload = (
+  pages: FormPageInstance[],
+): CreateFormPagePayload[] =>
+  pages.map((page, index) => ({
+    id: page.id,
+    title: page.title || `Страница ${index + 1}`,
+    fields: mapFieldsToPayload(page.fields),
+  }));
+
+/**
+ * Normalizes raw `fields` JSON from Supabase into a pages array.
+ * Backward compatibility: if `fields` is a flat array of field payloads,
+ * wraps them into a single default page.
+ */
+const normalizePagesFromDb = (rawFields: unknown): CreateFormPagePayload[] => {
+  const arr = Array.isArray(rawFields) ? rawFields : [];
+  if (arr.length === 0) {
+    return [];
+  }
+
+  const first = arr[0] as any;
+
+  // New shape: pages already stored
+  if (first && typeof first === 'object' && 'fields' in first) {
+    return (arr as any[]).map((page, index) => ({
+      id: typeof page.id === 'string' ? page.id : crypto.randomUUID(),
+      title:
+        typeof page.title === 'string' && page.title.trim()
+          ? page.title
+          : `Страница ${index + 1}`,
+      fields: Array.isArray(page.fields) ? page.fields : [],
+    }));
+  }
+
+  // Legacy shape: flat field array — wrap into a single page
+  return [
+    {
+      id: crypto.randomUUID(),
+      title: 'Страница 1',
+      fields: arr as CreateFormFieldPayload[],
+    },
+  ];
+};
+
+/**
+ * Converts stored page payloads back to in-app FormPageInstance objects.
+ */
+export const pagesPayloadToInstances = (
+  pages: CreateFormPagePayload[],
+): FormPageInstance[] =>
+  pages.map((page, index) => ({
+    id: page.id || crypto.randomUUID(),
+    title: page.title || `Страница ${index + 1}`,
+    fields: (page.fields ?? []).map(payloadToInstance),
+  }));
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const getForms = async (): Promise<FormResponse[]> => {
@@ -99,7 +182,15 @@ export const getForms = async (): Promise<FormResponse[]> => {
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as FormResponse[];
+  const rows = (data ?? []) as DbFormRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description ?? '',
+    pages: normalizePagesFromDb(row.fields),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }));
 };
 
 export const getFormById = async (id: string): Promise<FormResponse> => {
@@ -110,7 +201,15 @@ export const getFormById = async (id: string): Promise<FormResponse> => {
     .single();
 
   if (error) throw new Error(error.message);
-  return data as FormResponse;
+  const row = data as DbFormRow;
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? '',
+    pages: normalizePagesFromDb(row.fields),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 };
 
 export const createForm = async (
@@ -122,14 +221,23 @@ export const createForm = async (
       {
         name: payload.name,
         description: payload.description ?? null,
-        fields: payload.fields,
+        // Persist pages array in the `fields` jsonb column for backward compatibility
+        fields: payload.pages,
       },
     ])
     .select()
     .single();
 
   if (error) throw new Error(error.message);
-  return data as FormResponse;
+  const row = data as DbFormRow;
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? '',
+    pages: normalizePagesFromDb(row.fields),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 };
 
 export const updateForm = async (
@@ -141,7 +249,8 @@ export const updateForm = async (
     .update({
       name: payload.name,
       description: payload.description ?? null,
-      fields: payload.fields,
+      // Persist pages array in the `fields` jsonb column for backward compatibility
+      fields: payload.pages,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -149,7 +258,15 @@ export const updateForm = async (
     .single();
 
   if (error) throw new Error(error.message);
-  return data as FormResponse;
+  const row = data as DbFormRow;
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? '',
+    pages: normalizePagesFromDb(row.fields),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 };
 
 export const deleteForm = async (id: string): Promise<void> => {

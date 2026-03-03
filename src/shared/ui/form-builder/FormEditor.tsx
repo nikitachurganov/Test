@@ -1,18 +1,19 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   Breadcrumb,
   Button,
   Card,
-  Divider,
   Form,
   Input,
+  Popconfirm,
   Space,
-  Tag,
+  Tabs,
+  Tooltip,
   Typography,
   notification,
   theme,
 } from 'antd';
-import { ArrowLeftOutlined, EyeOutlined, SendOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons';
 import {
   DndContext,
   DragOverlay,
@@ -37,6 +38,7 @@ import {
   type FieldOption,
   type FormFieldInstance,
   type FormFieldType,
+  type FormPageInstance,
 } from '../../types/form-builder.types';
 
 const { Title } = Typography;
@@ -52,14 +54,19 @@ export interface FormEditorProps {
   saveButtonLabel?: string;
   /** Pre-filled form name (edit mode) */
   initialTitle?: string;
-  /** Pre-filled field list (edit mode) */
+  /** Pre-filled pages (edit mode). If omitted, a single empty page is created. */
+  initialPages?: FormPageInstance[];
+  /**
+   * Backward-compatibility: pre-filled flat field list (legacy shape).
+   * If provided and initialPages is empty, wrapped into a default page.
+   */
   initialFields?: FormFieldInstance[];
   /**
    * Called when the user clicks Save.
    * Should perform the API call and navigate away on success.
    * If it throws, FormEditor shows an error notification.
    */
-  onSave: (title: string, fields: FormFieldInstance[]) => Promise<void>;
+  onSave: (title: string, pages: FormPageInstance[]) => Promise<void>;
   /** Called when the user clicks the back arrow */
   onBack: () => void;
 }
@@ -138,6 +145,8 @@ export const TOOL_PANEL_DROP_ID = 'tool-panel';
 
 interface ToolPanelDropZoneProps {
   isCanvasDragging: boolean;
+  width: number;
+  onResizeStart: (event: React.MouseEvent<HTMLDivElement>) => void;
   children: ReactNode;
 }
 
@@ -147,7 +156,12 @@ interface ToolPanelDropZoneProps {
  * DndContext would look for a provider *above* it in the tree — which doesn't
  * exist — and the droppable would never be registered.
  */
-const ToolPanelDropZone = ({ isCanvasDragging, children }: ToolPanelDropZoneProps) => {
+const ToolPanelDropZone = ({
+  isCanvasDragging,
+  width,
+  onResizeStart,
+  children,
+}: ToolPanelDropZoneProps) => {
   const { token } = theme.useToken();
   const { setNodeRef, isOver } = useDroppable({ id: TOOL_PANEL_DROP_ID });
 
@@ -157,8 +171,9 @@ const ToolPanelDropZone = ({ isCanvasDragging, children }: ToolPanelDropZoneProp
     <div
       ref={setNodeRef}
       style={{
-        width: 420,
-        minWidth: 420,
+        position: 'relative',
+        width,
+        minWidth: width,
         height: '100%',
         flexShrink: 0,
         display: 'flex',
@@ -217,6 +232,18 @@ const ToolPanelDropZone = ({ isCanvasDragging, children }: ToolPanelDropZoneProp
           children
         )}
       </Card>
+      <div
+        onMouseDown={onResizeStart}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 3,
+          cursor: 'col-resize',
+          background: 'transparent',
+        }}
+      />
     </div>
   );
 };
@@ -241,6 +268,143 @@ const createField = (type: FormFieldType): FormFieldInstance => ({
   children: type === 'group' ? [] : undefined,
 });
 
+// ─── Inline preview panel (multi-page) ───────────────────────────────────────
+
+const collectFieldIds = (fields: FormFieldInstance[]): string[] => {
+  const ids: string[] = [];
+  for (const field of fields) {
+    if (field.type === 'group' && field.children && field.children.length > 0) {
+      ids.push(...collectFieldIds(field.children));
+    } else {
+      ids.push(field.id);
+    }
+  }
+  return ids;
+};
+
+interface InlinePreviewProps {
+  formTitle: string;
+  pages: FormPageInstance[];
+}
+
+const InlinePreview = ({ formTitle, pages }: InlinePreviewProps) => {
+  const { token } = theme.useToken();
+  const [form] = Form.useForm();
+  const [pageIndex, setPageIndex] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const hasPages = pages.length > 0;
+  const currentPage = hasPages ? pages[Math.min(pageIndex, pages.length - 1)] : null;
+  const isFirst = pageIndex === 0;
+  const isLast = hasPages && pageIndex === pages.length - 1;
+
+  const scrollToTop = () => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleNext = async () => {
+    if (!currentPage) return;
+    const ids = collectFieldIds(currentPage.fields);
+    try {
+      await form.validateFields(ids);
+      setPageIndex((idx) => Math.min(idx + 1, pages.length - 1));
+      scrollToTop();
+    } catch {
+      // Validation errors are shown inline
+    }
+  };
+
+  const handleBack = () => {
+    setPageIndex((idx) => Math.max(0, idx - 1));
+    scrollToTop();
+  };
+
+  const handleSubmit = async () => {
+    try {
+      await form.validateFields();
+      setIsSubmitting(true);
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      notification.success({
+        message: 'Форма отправлена',
+        description: 'Это предпросмотр — данные не сохраняются.',
+        placement: 'topRight',
+      });
+      form.resetFields();
+      setPageIndex(0);
+      scrollToTop();
+    } catch {
+      // Validation errors are shown inline
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        background: token.colorBgLayout,
+        padding: 24,
+      }}
+    >
+      <div style={{ maxWidth: 680, margin: '0 auto' }}>
+        {formTitle && (
+          <Title level={4} style={{ marginBottom: 24 }}>
+            {formTitle}
+          </Title>
+        )}
+
+        {hasPages && currentPage && currentPage.fields.length > 0 ? (
+          <Form form={form} layout="vertical" requiredMark={false}>
+            {currentPage.fields.map((field) => (
+              <PreviewField key={field.id} field={field} />
+            ))}
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              {!isFirst && (
+                <Button onClick={handleBack}>Назад</Button>
+              )}
+              {!isLast && (
+                <Button type="primary" onClick={handleNext}>
+                  Далее
+                </Button>
+              )}
+              {isLast && (
+                <Button
+                  type="primary"
+                  onClick={handleSubmit}
+                  loading={isSubmitting}
+                >
+                  Отправить
+                </Button>
+              )}
+            </div>
+          </Form>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <Typography.Text type="secondary">
+              В форму не добавлено ни одного поля.
+            </Typography.Text>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── FormEditor ───────────────────────────────────────────────────────────────
 
 export const FormEditor = ({
@@ -248,6 +412,7 @@ export const FormEditor = ({
   pageTitle,
   saveButtonLabel = 'Сохранить',
   initialTitle = '',
+  initialPages,
   initialFields = [],
   onSave,
   onBack,
@@ -255,10 +420,26 @@ export const FormEditor = ({
   const { token } = theme.useToken();
 
   const [formTitle, setFormTitle] = useState<string>(initialTitle);
-  const [fields, setFields] = useState<FormFieldInstance[]>(initialFields);
+  const resolvedInitialPages: FormPageInstance[] =
+    initialPages && initialPages.length
+      ? initialPages
+      : [
+          {
+            id: crypto.randomUUID(),
+            title: 'Страница 1',
+            fields: initialFields,
+          },
+        ];
+
+  const [pages, setPages] = useState<FormPageInstance[]>(resolvedInitialPages);
+  const [activePageId, setActivePageId] = useState<string>(
+    resolvedInitialPages[0]?.id ?? crypto.randomUUID(),
+  );
+  const [toolboxWidth, setToolboxWidth] = useState<number>(360);
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [activeDrag, setActiveDrag] = useState<ActiveDragInfo>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -266,24 +447,66 @@ export const FormEditor = ({
 
   const isCanvasDragging = activeDrag?.source === 'canvas';
 
-  // ── Top-level field mutation ──────────────────────────────────────────────────
-  const handleFieldChange = useCallback(
-    (id: string, changes: Partial<FormFieldInstance>) => {
-      setFields((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, ...changes } : f)),
-      );
+  const handleToolboxResizeMouseMove = useCallback(
+    (event: MouseEvent) => {
+      if (!resizeStateRef.current) return;
+      const { startX, startWidth } = resizeStateRef.current;
+      const delta = event.clientX - startX;
+      const nextWidth = Math.min(Math.max(startWidth + delta, 240), 600);
+      setToolboxWidth(nextWidth);
     },
     [],
   );
 
+  const handleToolboxResizeMouseUp = useCallback(() => {
+    resizeStateRef.current = null;
+    window.removeEventListener('mousemove', handleToolboxResizeMouseMove);
+    window.removeEventListener('mouseup', handleToolboxResizeMouseUp);
+  }, [handleToolboxResizeMouseMove]);
+
+  const handleToolboxResizeStart = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      resizeStateRef.current = { startX: event.clientX, startWidth: toolboxWidth };
+      window.addEventListener('mousemove', handleToolboxResizeMouseMove);
+      window.addEventListener('mouseup', handleToolboxResizeMouseUp);
+    },
+    [toolboxWidth, handleToolboxResizeMouseMove, handleToolboxResizeMouseUp],
+  );
+
+  const activePage: FormPageInstance | undefined =
+    pages.find((p) => p.id === activePageId) ?? pages[0];
+  const activeFields: FormFieldInstance[] = activePage?.fields ?? [];
+
+  const setActivePageFields = useCallback(
+    (updater: (fields: FormFieldInstance[]) => FormFieldInstance[]) => {
+      setPages((prevPages) =>
+        prevPages.map((page) =>
+          page.id === activePageId ? { ...page, fields: updater(page.fields) } : page,
+        ),
+      );
+    },
+    [activePageId],
+  );
+
+  // ── Top-level field mutation ──────────────────────────────────────────────────
+  const handleFieldChange = useCallback(
+    (id: string, changes: Partial<FormFieldInstance>) => {
+      setActivePageFields((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, ...changes } : f)),
+      );
+    },
+    [setActivePageFields],
+  );
+
   const handleFieldDelete = useCallback((id: string) => {
-    setFields((prev) => prev.filter((f) => f.id !== id));
-  }, []);
+    setActivePageFields((prev) => prev.filter((f) => f.id !== id));
+  }, [setActivePageFields]);
 
   // ── Group child mutation ──────────────────────────────────────────────────────
   const handleGroupChildChange = useCallback(
     (groupId: string, childId: string, changes: Partial<FormFieldInstance>) => {
-      setFields((prev) =>
+      setActivePageFields((prev) =>
         prev.map((f) =>
           f.id === groupId && f.children
             ? {
@@ -296,12 +519,12 @@ export const FormEditor = ({
         ),
       );
     },
-    [],
+    [setActivePageFields],
   );
 
   const handleGroupChildDelete = useCallback(
     (groupId: string, childId: string) => {
-      setFields((prev) =>
+      setActivePageFields((prev) =>
         prev.map((f) =>
           f.id === groupId && f.children
             ? { ...f, children: f.children.filter((c) => c.id !== childId) }
@@ -309,7 +532,7 @@ export const FormEditor = ({
         ),
       );
     },
-    [],
+    [setActivePageFields],
   );
 
   // ── Drag start ───────────────────────────────────────────────────────────────
@@ -347,7 +570,7 @@ export const FormEditor = ({
       if (isGroupCanvas(overId)) {
         if (fieldType === 'group') return;
         const groupId = groupIdFromCanvas(overId);
-        setFields((prev) =>
+        setActivePageFields((prev) =>
           prev.map((f) =>
             f.id === groupId
               ? { ...f, children: [...(f.children ?? []), newField] }
@@ -357,7 +580,7 @@ export const FormEditor = ({
         return;
       }
 
-      setFields((prev) => {
+      setActivePageFields((prev) => {
         const parentGroup = prev.find(
           (f) => f.type === 'group' && f.children?.some((c) => c.id === overId),
         );
@@ -387,7 +610,7 @@ export const FormEditor = ({
 
     // Canvas → tool panel (delete)
     if (data.source === 'canvas' && overId === TOOL_PANEL_DROP_ID) {
-      setFields((prev) => {
+      setActivePageFields((prev) => {
         if (prev.some((f) => f.id === activeId)) {
           return prev.filter((f) => f.id !== activeId);
         }
@@ -403,7 +626,7 @@ export const FormEditor = ({
 
     // Canvas → canvas reorder
     if (data.source === 'canvas') {
-      setFields((prev) => {
+      setActivePageFields((prev) => {
         const activeParent = prev.find(
           (f) => f.type === 'group' && f.children?.some((c) => c.id === activeId),
         );
@@ -431,7 +654,7 @@ export const FormEditor = ({
         return prev;
       });
     }
-  }, []);
+  }, [setActivePageFields]);
 
   // ── DragOverlay renderer ──────────────────────────────────────────────────────
   const renderOverlay = () => {
@@ -441,10 +664,10 @@ export const FormEditor = ({
       return <PanelDragChip label={activeDrag.label} />;
     }
 
-    const topLevel = fields.find((f) => f.id === activeDrag.fieldId);
+    const topLevel = activeFields.find((f) => f.id === activeDrag.fieldId);
     if (topLevel) return <CanvasFieldOverlay field={topLevel} />;
 
-    for (const f of fields) {
+    for (const f of activeFields) {
       if (f.type === 'group' && f.children) {
         const child = f.children.find((c) => c.id === activeDrag.fieldId);
         if (child) return <CanvasFieldOverlay field={child} />;
@@ -467,7 +690,7 @@ export const FormEditor = ({
 
     setIsSaving(true);
     try {
-      await onSave(formTitle.trim(), fields);
+      await onSave(formTitle.trim(), pages);
     } catch (err) {
       notification.error({
         message: 'Ошибка при сохранении',
@@ -478,7 +701,42 @@ export const FormEditor = ({
     } finally {
       setIsSaving(false);
     }
-  }, [formTitle, fields, onSave]);
+  }, [formTitle, pages, onSave]);
+
+  const handleAddPage = () => {
+    const newPage: FormPageInstance = {
+      id: crypto.randomUUID(),
+      title: `Страница ${pages.length + 1}`,
+      fields: [],
+    };
+    setPages((prev) => [...prev, newPage]);
+    setActivePageId(newPage.id);
+  };
+
+  const handleDeletePage = (pageId: string) => {
+    setPages((prev) => {
+      if (prev.length <= 1) return prev;
+      const index = prev.findIndex((p) => p.id === pageId);
+      if (index === -1) return prev;
+      const next = prev.filter((p) => p.id !== pageId);
+      if (pageId === activePageId && next.length > 0) {
+        const newIndex = index > 0 ? index - 1 : 0;
+        setActivePageId(next[newIndex].id);
+      }
+      return next;
+    });
+  };
+
+  const handleTabEdit = (targetKey: string, action: 'add' | 'remove') => {
+    if (action === 'add') {
+      handleAddPage();
+      return;
+    }
+    if (action === 'remove') {
+      if (pages.length <= 1) return;
+      handleDeletePage(targetKey);
+    }
+  };
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -530,13 +788,15 @@ export const FormEditor = ({
             </Space>
 
             <Space>
-              <Button
-                icon={<EyeOutlined />}
-                onClick={() => setIsPreviewOpen(true)}
-                disabled={isSaving}
-              >
-                Предпросмотр
-              </Button>
+              <Tooltip title={isPreviewMode ? 'К редактированию' : 'Предпросмотр'}>
+                <Button
+                  type={isPreviewMode ? 'primary' : 'default'}
+                  ghost={isPreviewMode}
+                  icon={<EyeOutlined />}
+                  onClick={() => setIsPreviewMode((prev) => !prev)}
+                  disabled={isSaving}
+                />
+              </Tooltip>
               <Button
                 type="primary"
                 onClick={handleSave}
@@ -549,112 +809,118 @@ export const FormEditor = ({
           </div>
         </div>
 
-        {/* ── Two-panel layout ── */}
+        {/* ── Content area: builder or inline preview ── */}
         <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {/* Left — Tool Panel (also a drop zone: drag canvas → here to delete) */}
-          <ToolPanelDropZone isCanvasDragging={isCanvasDragging}>
-            <ToolPanel />
-          </ToolPanelDropZone>
+          {isPreviewMode ? (
+            <InlinePreview formTitle={formTitle} pages={pages} />
+          ) : (
+            <>
+              {/* Left — Tool Panel (also a drop zone: drag canvas → here to delete) */}
+              <ToolPanelDropZone
+                isCanvasDragging={isCanvasDragging}
+                width={toolboxWidth}
+                onResizeStart={handleToolboxResizeStart}
+              >
+                <ToolPanel isCompact={toolboxWidth < 320} />
+              </ToolPanelDropZone>
 
-          {/* Right — Form Builder canvas */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              height: '100%',
-              padding: 20,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <FormTitleInput value={formTitle} onChange={setFormTitle} />
-            <div style={{ marginBottom: token.margin }} />
-            <FormCanvas
-              fields={fields}
-              onFieldChange={handleFieldChange}
-              onFieldDelete={handleFieldDelete}
-              onGroupChildChange={handleGroupChildChange}
-              onGroupChildDelete={handleGroupChildDelete}
-            />
-          </div>
+              {/* Right — Form Builder canvas */}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  height: '100%',
+                  padding: 20,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <FormTitleInput value={formTitle} onChange={setFormTitle} />
+                <div style={{ marginBottom: token.margin }} />
+                <Tabs
+                  type="line"
+                  activeKey={activePageId}
+                  onChange={(key) => setActivePageId(key)}
+                  onEdit={(e, action) => {
+                    const key = typeof e === 'string' ? e : '';
+                    if (key) {
+                      handleTabEdit(key, action as 'add' | 'remove');
+                    }
+                  }}
+                  hideAdd
+                  tabBarGutter={12}
+                  tabBarStyle={{ marginBottom: 0 }}
+                  items={pages.map((page, index) => ({
+                    key: page.id,
+                    label: (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <span>Страница {index + 1}</span>
+                        {pages.length > 1 && (
+                          <Popconfirm
+                            title="Удалить страницу"
+                            description="Вы уверены, что хотите удалить страницу? Это действие нельзя отменить."
+                            okText="Удалить"
+                            cancelText="Отменить"
+                            onConfirm={() => handleTabEdit(page.id, 'remove')}
+                          >
+                            <Button
+                              type="text"
+                              size="small"
+                              shape="circle"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                padding: 0,
+                                width: 20,
+                                height: 20,
+                                lineHeight: '20px',
+                                minWidth: 0,
+                              }}
+                            >
+                              ×
+                            </Button>
+                          </Popconfirm>
+                        )}
+                      </div>
+                    ),
+                  }))}
+                  tabBarExtraContent={
+                    <span
+                      style={{
+                        color: '#1677ff',
+                        cursor: 'pointer',
+                        marginLeft: 8,
+                        userSelect: 'none',
+                        fontSize: 12,
+                      }}
+                      onClick={handleAddPage}
+                    >
+                      Добавить страницу
+                    </span>
+                  }
+                />
+                <div style={{ marginBottom: token.margin }} />
+                <FormCanvas
+                  fields={activeFields}
+                  onFieldChange={handleFieldChange}
+                  onFieldDelete={handleFieldDelete}
+                  onGroupChildChange={handleGroupChildChange}
+                  onGroupChildDelete={handleGroupChildDelete}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       <DragOverlay dropAnimation={null}>{renderOverlay()}</DragOverlay>
-
-      {/* ── Full-content-area preview overlay ── */}
-      {isPreviewOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 100,
-            display: 'flex',
-            flexDirection: 'column',
-            background: token.colorBgLayout,
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              background: token.colorBgContainer,
-              borderBottom: `1px solid ${token.colorBorderSecondary}`,
-              padding: '12px 24px 16px',
-              flexShrink: 0,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Space align="center" size={12}>
-              <Title level={4} style={{ margin: 0 }}>
-                Предпросмотр формы
-              </Title>
-              <Tag color="blue" style={{ fontWeight: 400 }}>
-                Только просмотр
-              </Tag>
-            </Space>
-            <Button onClick={() => setIsPreviewOpen(false)}>Закрыть</Button>
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflowY: 'auto',
-              padding: 24,
-            }}
-          >
-            <div style={{ maxWidth: 680, margin: '0 auto' }}>
-              {formTitle && (
-                <Title level={4} style={{ marginBottom: 24 }}>
-                  {formTitle}
-                </Title>
-              )}
-
-              {fields.length > 0 ? (
-                <Form layout="vertical" requiredMark="optional">
-                  {fields.map((field) => (
-                    <PreviewField key={field.id} field={field} />
-                  ))}
-                  <Divider style={{ marginTop: 8 }} />
-                  <Button type="primary" icon={<SendOutlined />} disabled block>
-                    Отправить
-                  </Button>
-                </Form>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '48px 0' }}>
-                  <Typography.Text type="secondary">
-                    В форму не добавлено ни одного поля.
-                  </Typography.Text>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </DndContext>
   );
 };

@@ -13,7 +13,9 @@ export type FormFieldType =
   | 'date'
   | 'time'
   | 'group'
-  | 'fileUpload'
+  | 'file_vector'
+  | 'file_image'
+  | 'file_document'
   | 'address';
 
 export interface FieldOption {
@@ -29,6 +31,14 @@ export interface FormFieldInstance {
   required: boolean;
   options?: FieldOption[];    // radio / checkbox / dropdown only
   children?: FormFieldInstance[]; // group only
+  /** Optional runtime value for fields like address; not persisted in schema */
+  value?: string;
+}
+
+export interface FormPageInstance {
+  id: string;
+  title: string;
+  fields: FormFieldInstance[];
 }
 
 /** Drag data emitted by tool-panel items */
@@ -61,7 +71,9 @@ export const PANEL_KEY_TO_FIELD_TYPE: Readonly<Partial<Record<string, FormFieldT
   date: 'date',
   time: 'time',
   group: 'group',
-  fileUpload: 'fileUpload',
+  fileVector: 'file_vector',
+  fileImage: 'file_image',
+  fileDocument: 'file_document',
   address: 'address',
 } as const;
 
@@ -81,7 +93,9 @@ export const FIELD_TYPE_LABELS: Readonly<Record<FormFieldType, string>> = {
   date: 'Дата',
   time: 'Время',
   group: 'Группа полей',
-  fileUpload: 'Загрузка файла',
+  file_vector: 'Загрузка векторных файлов',
+  file_image: 'Загрузка изображений',
+  file_document: 'Загрузка документов',
   address: 'Адрес',
 } as const;
 

@@ -1,7 +1,11 @@
 import { DatePicker, Input, Radio, Select, TimePicker, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { FieldOptionsEditor } from './FieldOptionsEditor';
-import type { FieldOption, FormFieldInstance } from '../../types/form-builder.types';
+import {
+  FIELD_TYPE_LABELS,
+  type FieldOption,
+  type FormFieldInstance,
+} from '../../types/form-builder.types';
 
 interface FieldPreviewProps {
   field: FormFieldInstance;
@@ -97,7 +101,9 @@ export const FieldPreview = ({ field, onOptionsChange }: FieldPreviewProps) => {
       // Rendered by GroupBlock — FieldPreview is not used for groups
       return null;
 
-    case 'fileUpload':
+    case 'file_vector':
+    case 'file_image':
+    case 'file_document':
       return (
         <Upload.Dragger
           disabled
@@ -108,23 +114,19 @@ export const FieldPreview = ({ field, onOptionsChange }: FieldPreviewProps) => {
           <p style={{ margin: 0 }}>
             <InboxOutlined style={{ fontSize: 24 }} />
           </p>
-          <p style={{ margin: '8px 0 0', fontSize: 13 }}>Загрузите файл</p>
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>
+            {FIELD_TYPE_LABELS[field.type]}
+          </p>
         </Upload.Dragger>
       );
 
     case 'address':
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Input disabled placeholder="Город" />
-            <Input disabled placeholder="Улица" />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Input disabled placeholder="Дом" />
-            <Input disabled placeholder="Квартира" />
-          </div>
-          <Input disabled placeholder="Почтовый индекс" />
-        </div>
+        <Input
+          disabled
+          placeholder="Начните вводить адрес..."
+          style={{ width: '100%' }}
+        />
       );
   }
 };

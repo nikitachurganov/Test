@@ -1,4 +1,4 @@
-import { Button, Divider, Input, Popconfirm, Switch, Tag, Typography, theme } from 'antd';
+import { Button, Input, Popconfirm, Tag, Typography, theme } from 'antd';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { DragHandle } from './DragHandle';
@@ -19,7 +19,6 @@ interface GroupBlockProps {
   /** Called when a child field inside this group is deleted */
   onChildDelete: (childId: string) => void;
   dragHandleProps: React.HTMLAttributes<HTMLDivElement>;
-  isDraggingOverlay?: boolean;
 }
 
 export const GroupBlock = ({
@@ -29,7 +28,6 @@ export const GroupBlock = ({
   onChildChange,
   onChildDelete,
   dragHandleProps,
-  isDraggingOverlay = false,
 }: GroupBlockProps) => {
   const { token } = theme.useToken();
   const children = field.children ?? [];
@@ -41,10 +39,10 @@ export const GroupBlock = ({
   return (
     <div
       style={{
-        background: token.colorFillAlter,
-        border: `1px solid ${isDraggingOverlay ? token.colorPrimary : token.colorBorder}`,
+        background: token.colorBgContainer,
+        border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: token.borderRadius,
-        boxShadow: isDraggingOverlay ? token.boxShadowSecondary : 'none',
+        boxShadow: 'none',
         overflow: 'hidden',
       }}
     >
@@ -144,26 +142,8 @@ export const GroupBlock = ({
           )}
         </div>
 
-        {/* ── Required switch + delete ── */}
-        <Divider style={{ margin: '14px 0 10px' }} />
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Switch
-              size="small"
-              checked={field.required}
-              onChange={(checked) => onChange({ required: checked })}
-            />
-            <Text style={{ fontSize: token.fontSize, color: token.colorTextSecondary }}>
-              Обязательно для заполнения
-            </Text>
-          </div>
-
+        {/* ── Delete ── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
           <Popconfirm
             title="Удалить группу?"
             okText="Удалить"

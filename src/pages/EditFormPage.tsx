@@ -4,12 +4,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   getFormById,
   updateForm,
-  mapFieldsToPayload,
-  payloadToInstance,
+  mapPagesToPayload,
+  pagesPayloadToInstances,
   type FormResponse,
 } from '../shared/api/forms.api';
 import { FormEditor } from '../shared/ui/form-builder/FormEditor';
-import type { FormFieldInstance } from '../shared/types/form-builder.types';
+import type { FormPageInstance } from '../shared/types/form-builder.types';
 
 export const EditFormPage = () => {
   const navigate = useNavigate();
@@ -34,19 +34,19 @@ export const EditFormPage = () => {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Convert stored payload fields → FormFieldInstance once per load.
+  // Convert stored payload pages → FormPageInstance once per load.
   // FormEditor is only mounted after loading finishes, so these are stable.
-  const initialFields = useMemo<FormFieldInstance[]>(
-    () => (formData?.fields ?? []).map(payloadToInstance),
+  const initialPages = useMemo<FormPageInstance[]>(
+    () => (formData?.pages ? pagesPayloadToInstances(formData.pages) : []),
     [formData],
   );
 
-  const handleSave = async (title: string, fields: FormFieldInstance[]) => {
+  const handleSave = async (title: string, pages: FormPageInstance[]) => {
     if (!id) return;
 
     await updateForm(id, {
       name: title,
-      fields: mapFieldsToPayload(fields),
+      pages: mapPagesToPayload(pages),
     });
 
     notification.success({
@@ -91,9 +91,9 @@ export const EditFormPage = () => {
     <FormEditor
       breadcrumbLabel="Редактирование формы"
       pageTitle="Редактирование формы"
-      saveButtonLabel="Обновить"
+      saveButtonLabel="Сохранить"
       initialTitle={formData.name}
-      initialFields={initialFields}
+      initialPages={initialPages}
       onSave={handleSave}
       onBack={() => navigate('/forms')}
     />

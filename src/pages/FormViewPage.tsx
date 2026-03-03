@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Breadcrumb,
   Button,
-  Divider,
   Form,
   Popconfirm,
   Space,
@@ -12,23 +12,32 @@ import {
   notification,
   theme,
 } from 'antd';
-import {
-  ArrowLeftOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  SendOutlined,
-} from '@ant-design/icons';
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   deleteForm,
   getFormById,
-  payloadToInstance,
+  pagesPayloadToInstances,
   type FormResponse,
 } from '../shared/api/forms.api';
 import { PreviewField } from '../shared/ui/form-builder/FormPreviewModal';
-import type { FormFieldInstance } from '../shared/types/form-builder.types';
+import type { FormFieldInstance, FormPageInstance } from '../shared/types/form-builder.types';
 
 const { Title, Text } = Typography;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const collectFieldIds = (fields: FormFieldInstance[]): string[] => {
+  const ids: string[] = [];
+  for (const field of fields) {
+    if (field.type === 'group' && field.children && field.children.length > 0) {
+      ids.push(...collectFieldIds(field.children));
+    } else {
+      ids.push(field.id);
+    }
+  }
+  return ids;
+};
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +50,10 @@ export const FormViewPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [form] = Form.useForm();
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -56,11 +69,64 @@ export const FormViewPage = () => {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Convert API payload fields to FormFieldInstance once per load
-  const fieldInstances = useMemo<FormFieldInstance[]>(
-    () => (formData?.fields ?? []).map(payloadToInstance),
+  // Convert API payload pages to FormPageInstance once per load
+  const pageInstances = useMemo<FormPageInstance[]>(
+    () => (formData?.pages ? pagesPayloadToInstances(formData.pages) : []),
     [formData],
   );
+
+  const hasPages = pageInstances.length > 0;
+  const currentPage = hasPages
+    ? pageInstances[Math.min(pageIndex, pageInstances.length - 1)]
+    : null;
+  const isFirst = pageIndex === 0;
+  const isLast = hasPages && pageIndex === pageInstances.length - 1;
+
+  useEffect(() => {
+    // Reset to first page when a new form is loaded
+    setPageIndex(0);
+    form.resetFields();
+  }, [formData, form]);
+
+  const scrollToTop = () => {
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleNextPage = async () => {
+    if (!currentPage) return;
+    const ids = collectFieldIds(currentPage.fields);
+    try {
+      await form.validateFields(ids);
+      setPageIndex((idx) => Math.min(idx + 1, pageInstances.length - 1));
+      scrollToTop();
+    } catch {
+      // Validation errors are shown inline
+    }
+  };
+
+  const handlePrevPage = () => {
+    setPageIndex((idx) => Math.max(0, idx - 1));
+    scrollToTop();
+  };
+
+  const handleSubmitForm = async () => {
+    try {
+      await form.validateFields(); // validate all pages
+      setIsSubmitting(true);
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      notification.success({
+        message: 'Форма заполнена',
+        description: 'Это публичный просмотр — данные не отправляются.',
+        placement: 'topRight',
+      });
+    } catch {
+      // Validation errors are shown inline
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleDelete = useCallback(async () => {
     if (!id) return;
@@ -79,6 +145,7 @@ export const FormViewPage = () => {
   }, [id, navigate]);
 
   const pageTitle = loading ? 'Загрузка…' : (formData?.name ?? 'Форма');
+  const breadcrumbCurrent = loading ? 'Загрузка…' : (error ? 'Не найдено' : (formData?.name ?? 'Форма'));
 
   return (
     <div
@@ -99,6 +166,14 @@ export const FormViewPage = () => {
           flexShrink: 0,
         }}
       >
+        <Breadcrumb
+          style={{ marginBottom: 8 }}
+          items={[
+            { title: <a onClick={() => navigate('/forms')}>Формы</a> },
+            { title: breadcrumbCurrent },
+          ]}
+        />
+
         <div
           style={{
             display: 'flex',
@@ -158,6 +233,7 @@ export const FormViewPage = () => {
           overflowY: 'auto',
           background: token.colorBgLayout,
         }}
+        ref={contentRef}
       >
         {loading ? (
           <div
@@ -185,17 +261,38 @@ export const FormViewPage = () => {
               </Text>
             )}
 
-            {fieldInstances.length > 0 ? (
-              <Form layout="vertical" requiredMark="optional">
-                {fieldInstances.map((field) => (
+            {hasPages && currentPage && currentPage.fields.length > 0 ? (
+              <Form form={form} layout="vertical" requiredMark={false}>
+                {currentPage.fields.map((field) => (
                   <PreviewField key={field.id} field={field} />
                 ))}
 
-                <Divider style={{ marginTop: 8 }} />
-
-                <Button type="primary" icon={<SendOutlined />} disabled block>
-                  Отправить
-                </Button>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-start',
+                    gap: 10,
+                    marginTop: 16,
+                  }}
+                >
+                  {!isFirst && (
+                    <Button onClick={handlePrevPage}>Назад</Button>
+                  )}
+                  {!isLast && (
+                    <Button type="primary" onClick={handleNextPage}>
+                      Далее
+                    </Button>
+                  )}
+                  {isLast && (
+                    <Button
+                      type="primary"
+                      onClick={handleSubmitForm}
+                      loading={isSubmitting}
+                    >
+                      Отправить
+                    </Button>
+                  )}
+                </div>
               </Form>
             ) : (
               <div style={{ textAlign: 'center', padding: '48px 0' }}>

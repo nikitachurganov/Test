@@ -128,7 +128,9 @@ export const FieldRenderer = ({ field }: FieldRendererProps) => {
         </div>
       );
 
-    case 'fileUpload':
+    case 'file_vector':
+    case 'file_image':
+    case 'file_document':
       return (
         <Upload.Dragger
           disabled
@@ -139,18 +141,17 @@ export const FieldRenderer = ({ field }: FieldRendererProps) => {
             <InboxOutlined style={{ fontSize: 20 }} />
           </p>
           <p style={{ margin: '4px 0 0', fontSize: 12 }}>
-            {FIELD_TYPE_LABELS.fileUpload}
+            {FIELD_TYPE_LABELS[field.type]}
           </p>
         </Upload.Dragger>
       );
 
     case 'address':
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Input disabled placeholder="Город" />
-          <Input disabled placeholder="Улица" />
-          <Input disabled placeholder="Дом / Квартира" />
-        </div>
+        <Input
+          disabled
+          placeholder={FIELD_TYPE_LABELS.address}
+        />
       );
   }
 };
