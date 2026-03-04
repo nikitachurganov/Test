@@ -1,121 +1,246 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Table, Tag } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Button,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  notification,
+  theme,
+} from 'antd';
 import type { TableProps } from 'antd';
-import { useRequestsStore } from '../shared/store/requests.store';
-import { CreateRequestDrawer } from '../shared/ui/CreateRequestDrawer';
-import type { Request } from '../shared/types/request.types';
+import { PlusOutlined } from '@ant-design/icons';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  deleteRequest,
+  getRequests,
+  type RequestResponse,
+} from '../shared/api/requests.api';
 
-const statusView: Record<Request['status'], { color: string; label: string }> = {
-  new: { color: 'blue', label: 'Новая' },
-  in_progress: { color: 'orange', label: 'В работе' },
-  done: { color: 'green', label: 'Завершена' },
+const { Title } = Typography;
+
+const statusView: Record<RequestResponse['status'], { color: string; label: string }> = {
+  open: { color: 'blue', label: 'Открыта' },
+  closed: { color: 'gray', label: 'Закрыта' },
 };
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export const RequestsPage = () => {
-  const requests = useRequestsStore((state) => state.requests);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const tableContainerRef = useRef<HTMLDivElement | null>(null);
-  const [tableScrollY, setTableScrollY] = useState(0);
+  const navigate = useNavigate();
+  const { token } = theme.useToken();
 
-  useEffect(() => {
-    const container = tableContainerRef.current;
-    if (!container) {
-      return;
-    }
+  const [requests, setRequests] = useState<RequestResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    const updateHeight = () => {
-      setTableScrollY(container.clientHeight);
-    };
-
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateHeight();
-    });
-
-    resizeObserver.observe(container);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
+  const loadRequests = useCallback(() => {
+    setLoading(true);
+    getRequests()
+      .then((data) => {
+        setRequests(data);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Не удалось загрузить заявки');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
-  const columns = useMemo<TableProps<Request>['columns']>(
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      setDeletingId(id);
+      try {
+        await deleteRequest(id);
+        setRequests((prev) => prev.filter((r) => r.id !== id));
+        notification.success({ message: 'Заявка удалена' });
+      } catch (err) {
+        notification.error({
+          message: 'Ошибка удаления',
+          description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+        });
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [],
+  );
+
+  const columns = useMemo<TableProps<RequestResponse>['columns']>(
     () => [
       {
-        title: 'Название',
+        title: 'Название заявки',
         dataIndex: 'title',
         key: 'title',
+        minWidth: 260,
+        render: (_: unknown, record: RequestResponse) => (
+          <Link to={`/requests/${record.id}`} style={{ fontWeight: 500 }}>
+            {record.title}
+          </Link>
+        ),
       },
       {
-        title: 'Описание',
-        dataIndex: 'description',
-        key: 'description',
+        title: 'Номер заявки',
+        dataIndex: 'id',
+        key: 'id',
+        width: 160,
+      },
+      {
+        title: 'Дата создания',
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 200,
+        sorter: (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        render: (value: string) => formatDate(value),
+      },
+      {
+        title: 'Дата изменения',
+        dataIndex: 'updated_at',
+        key: 'updated_at',
+        width: 200,
+        sorter: (a, b) =>
+          new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime(),
+        render: (value: string) => formatDate(value),
       },
       {
         title: 'Статус',
         dataIndex: 'status',
         key: 'status',
-        render: (status: Request['status']) => (
-          <Tag color={statusView[status].color}>{statusView[status].label}</Tag>
-        ),
+        width: 140,
+        render: (status: RequestResponse['status']) => {
+          const view = statusView[status];
+          return <Tag color={view.color}>{view.label}</Tag>;
+        },
       },
       {
-        title: 'Дата создания',
-        dataIndex: 'createdAt',
-        key: 'createdAt',
-        render: (createdAt: string) => new Date(createdAt).toLocaleString('ru-RU'),
+        title: 'Действия',
+        key: 'actions',
+        width: 200,
+        render: (_: unknown, record: RequestResponse) => (
+          <Space size="small">
+            <Button
+              type="link"
+              size="small"
+              onClick={() => navigate(`/requests/${record.id}`)}
+            >
+              Открыть
+            </Button>
+            <Popconfirm
+              title="Удалить заявку?"
+              description="Это действие нельзя отменить."
+              okText="Удалить"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => handleDelete(record.id)}
+            >
+              <Button
+                type="link"
+                size="small"
+                danger
+                loading={deletingId === record.id}
+              >
+                Удалить
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
       },
     ],
-    [],
+    [navigate, handleDelete, deletingId],
   );
 
   return (
-    <div style={{ display: 'flex', flex: 1, height: '100%', minHeight: 0 }}>
-      <Card
-        title="Реестр заявок"
-        extra={
-          <Button type="primary" onClick={() => setDrawerOpen(true)}>
-            Добавить заявку
-          </Button>
-        }
+    <div
+      style={{
+        display: 'flex',
+        flex: 1,
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
+      {/* ── Header ── */}
+      <div
         style={{
-          display: 'flex',
-          flex: 1,
-          height: '100%',
-          minHeight: 0,
-          flexDirection: 'column',
-        }}
-        styles={{
-          body: {
-            display: 'flex',
-            flex: 1,
-            minHeight: 0,
-            flexDirection: 'column',
-          },
+          background: token.colorBgContainer,
+          borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          padding: '12px 24px 16px',
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <div
-            ref={tableContainerRef}
-            style={{ display: 'flex', flex: 1, minHeight: 0 }}
-          >
-            <Table<Request>
-              rowKey="id"
-              columns={columns}
-              dataSource={requests}
-              pagination={false}
-              scroll={{ y: tableScrollY }}
-              style={{ width: '100%', flex: 1, minHeight: 0 }}
-            />
-          </div>
-        </div>
-      </Card>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Title level={4} style={{ margin: 0 }}>
+            Реестр заявок
+          </Title>
 
-      <CreateRequestDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-      />
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/requests/create')}
+          >
+            Создать заявку
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Content ── */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          padding: 24,
+          background: token.colorBgLayout,
+        }}
+      >
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            message="Ошибка загрузки"
+            description={error}
+            action={
+              <Button size="small" onClick={loadRequests}>
+                Повторить
+              </Button>
+            }
+          />
+        ) : (
+          <Table<RequestResponse>
+            rowKey="id"
+            loading={loading}
+            dataSource={requests}
+            columns={columns}
+            pagination={{ pageSize: 20, showSizeChanger: true }}
+            scroll={{ x: 900 }}
+            locale={{ emptyText: 'Заявок пока нет. Создайте первую!' }}
+          />
+        )}
+      </div>
     </div>
   );
 };

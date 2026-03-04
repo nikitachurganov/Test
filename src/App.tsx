@@ -17,6 +17,7 @@ import { EmployeesPage } from './pages/EmployeesPage';
 import { FormViewPage } from './pages/FormViewPage';
 import { FormsPage } from './pages/FormsPage';
 import { RequestsPage } from './pages/RequestsPage';
+import { CreateRequestPage } from './pages/CreateRequestPage';
 
 const { Content, Sider } = Layout;
 const { Text } = Typography;
@@ -164,6 +165,10 @@ const router = createBrowserRouter([
       {
         path: 'requests',
         element: <RequestsPage />,
+      },
+      {
+        path: 'requests/create',
+        element: <CreateRequestPage />,
       },
       {
         path: 'forms',
