@@ -1,8 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Breadcrumb, Button, Descriptions, Image, Spin, Typography, theme } from 'antd';
+import {
+  Alert,
+  Badge,
+  Breadcrumb,
+  Button,
+  Descriptions,
+  Image,
+  Popconfirm,
+  Spin,
+  Tabs,
+  Typography,
+  notification,
+  theme,
+} from 'antd';
 import { ArrowLeftOutlined, FileOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getRequestWithForm, type RequestWithForm } from '../services/requestService';
+import { deleteRequest } from '../shared/api/requests.api';
 import { formatFieldValue } from '../shared/utils/formatFieldValue';
 import type { Field } from '../types/form';
 
@@ -41,6 +55,8 @@ export const RequestViewPage = () => {
     loading: true,
     error: null,
   });
+  const [deleting, setDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'info' | 'history' | 'people'>('info');
 
   useEffect(() => {
     if (!id) return;
@@ -151,6 +167,24 @@ export const RequestViewPage = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
   };
 
+  const handleDelete = async () => {
+    if (!data?.request) return;
+
+    setDeleting(true);
+    try {
+      await deleteRequest(data.request.id);
+      notification.success({ message: 'Заявка удалена' });
+      navigate('/requests');
+    } catch (err) {
+      notification.error({
+        message: 'Ошибка удаления',
+        description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   useEffect(() => {
     if (!data) return;
 
@@ -177,10 +211,9 @@ export const RequestViewPage = () => {
     <div
       style={{
         display: 'flex',
-        flex: 1,
         flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
+        height: '100vh',
+        overflow: 'hidden',
       }}
     >
       {/* Header */}
@@ -235,8 +268,25 @@ export const RequestViewPage = () => {
               </div>
             </div>
           </div>
-          {/* Right side: placeholder for future action buttons */}
-          <div />
+          {/* Right side: actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {data?.request && (
+              <Popconfirm
+                title="Are you sure you want to delete this request?"
+                okText="OK"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+                onConfirm={handleDelete}
+              >
+                <Button
+                  danger
+                  loading={deleting}
+                >
+                  Удалить
+                </Button>
+              </Popconfirm>
+            )}
+          </div>
         </div>
 
         {/* Metadata block (inside header) */}
@@ -248,15 +298,6 @@ export const RequestViewPage = () => {
             style={{ marginTop: 12, fontSize: 13 }}
             items={[
               {
-                key: 'type',
-                label: <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>Тип заявки</Text>,
-                children: (
-                  <Text style={{ fontSize: 13 }}>
-                    {data.request.form_snapshot?.title?.trim() || formTitle || '—'}
-                  </Text>
-                ),
-              },
-              {
                 key: 'status',
                 label: <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>Статус</Text>,
                 children: (
@@ -264,6 +305,15 @@ export const RequestViewPage = () => {
                     status="processing"
                     text={<Text style={{ fontSize: 13 }}>Открыта</Text>}
                   />
+                ),
+              },
+              {
+                key: 'type',
+                label: <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>Тип заявки</Text>,
+                children: (
+                  <Text style={{ fontSize: 13 }}>
+                    {data.request.form_snapshot?.title?.trim() || formTitle || '—'}
+                  </Text>
                 ),
               },
               {
@@ -300,9 +350,8 @@ export const RequestViewPage = () => {
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: 'auto',
           background: token.colorBgLayout,
-          padding: 24,
+          overflow: 'hidden',
         }}
       >
         {loading ? (
@@ -326,186 +375,267 @@ export const RequestViewPage = () => {
             description="Проверьте корректность ссылки или вернитесь к реестру заявок."
           />
         ) : (
-          <div style={{ maxWidth: 720, margin: '0 auto' }}>
-            {fields.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {hasMissingFilledFields && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="Форма была изменена после создания заявки"
-                    description="Некоторые поля могут не отображаться."
-                  />
-                )}
-                {/* TODO: Store form snapshot in request at creation time
-                    to prevent ID mismatch when form is edited later. */}
-                {fields.map((field) => {
-                  const rawValue = activeDataSource[field.id];
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              height: '100%',
+            }}
+          >
+            {/* Left: main request content with tabs */}
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+                height: '100%',
+              }}
+            >
+              <Tabs
+                activeKey={activeTab}
+                onChange={(key) =>
+                  setActiveTab(key as 'info' | 'history' | 'people')
+                }
+                type="line"
+                items={[
+                  { key: 'info', label: 'Информация' },
+                  { key: 'history', label: 'История', disabled: true },
+                  { key: 'people', label: 'Люди', disabled: true },
+                ]}
+              />
 
-                  // ── File fields: rich preview ──
-                  if (
-                    field.type === 'file_image' ||
-                    field.type === 'file_vector' ||
-                    field.type === 'file_document'
-                  ) {
-                    const fileMetas = normalizeFileValues(rawValue);
-                    if (!fileMetas.length) return null;
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: 'auto',
+                }}
+              >
+                {activeTab === 'info' && (
+                  <>
+                    {fields.length > 0 ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 16,
+                        }}
+                      >
+                        {hasMissingFilledFields && (
+                          <Alert
+                            type="warning"
+                            showIcon
+                            message="Форма была изменена после создания заявки"
+                            description="Некоторые поля могут не отображаться."
+                          />
+                        )}
+                        {/* TODO: Store form snapshot in request at creation time
+                            to prevent ID mismatch when form is edited later. */}
+                        {fields.map((field) => {
+                          const rawValue = activeDataSource[field.id];
 
-                    return (
-                      <div key={field.id}>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: token.colorTextSecondary,
-                            marginBottom: 8,
-                          }}
-                        >
-                          {field.label || 'Без названия'}
-                        </div>
+                          // ── File fields: rich preview ──
+                          if (
+                            field.type === 'file_image' ||
+                            field.type === 'file_vector' ||
+                            field.type === 'file_document'
+                          ) {
+                            const fileMetas = normalizeFileValues(rawValue);
+                            if (!fileMetas.length) return null;
 
-                        {/* Images get a thumbnail grid with preview */}
-                        {field.type === 'file_image' ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                            <Image.PreviewGroup>
-                              {fileMetas.map((meta, idx) => (
+                            return (
+                              <div key={field.id}>
                                 <div
-                                  key={meta.id ?? `${meta.file_name}-${idx}`}
                                   style={{
-                                    border: `1px solid ${token.colorBorderSecondary}`,
-                                    borderRadius: token.borderRadius,
-                                    overflow: 'hidden',
-                                    maxWidth: 300,
-                                    background: token.colorBgContainer,
+                                    fontSize: 12,
+                                    color: token.colorTextSecondary,
+                                    marginBottom: 8,
                                   }}
                                 >
-                                  {meta.file_url ? (
-                                    <Image
-                                      src={meta.file_url}
-                                      alt={meta.file_name}
-                                      style={{
-                                        maxWidth: 300,
-                                        maxHeight: 200,
-                                        objectFit: 'contain',
-                                        display: 'block',
-                                      }}
-                                      fallback="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22100%22%3E%3Crect%20fill%3D%22%23f0f0f0%22%20width%3D%22200%22%20height%3D%22100%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20fill%3D%22%23999%22%20font-size%3D%2214%22%3EОшибка%3C%2Ftext%3E%3C%2Fsvg%3E"
-                                    />
-                                  ) : (
-                                    <div style={{ padding: 16, textAlign: 'center' }}>
-                                      <FileOutlined style={{ fontSize: 32, color: token.colorTextQuaternary }} />
-                                    </div>
-                                  )}
-                                  <div
-                                    style={{
-                                      padding: '6px 10px',
-                                      borderTop: `1px solid ${token.colorBorderSecondary}`,
-                                      fontSize: 12,
-                                      color: token.colorTextSecondary,
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                    }}
-                                  >
-                                    <span style={{
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
-                                      maxWidth: '70%',
-                                    }}>
-                                      {meta.file_name}
-                                    </span>
-                                    {meta.file_size ? (
-                                      <span>{formatSize(meta.file_size)}</span>
-                                    ) : null}
-                                  </div>
+                                  {field.label || 'Без названия'}
                                 </div>
-                              ))}
-                            </Image.PreviewGroup>
-                          </div>
-                        ) : (
-                          /* Vector / document files: list with download links */
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {fileMetas.map((meta, idx) => (
-                              <div
-                                key={meta.id ?? `${meta.file_name}-${idx}`}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  padding: '8px 12px',
-                                  border: `1px solid ${token.colorBorderSecondary}`,
-                                  borderRadius: token.borderRadius,
-                                  background: token.colorBgContainer,
-                                }}
-                              >
-                                <FileOutlined style={{ fontSize: 18, color: token.colorTextSecondary }} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{
-                                    fontSize: 14,
-                                    fontWeight: 500,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                  }}>
-                                    {meta.file_name}
+
+                                {/* Images get a thumbnail grid with preview */}
+                                {field.type === 'file_image' ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                    <Image.PreviewGroup>
+                                      {fileMetas.map((meta, idx) => (
+                                        <div
+                                          key={meta.id ?? `${meta.file_name}-${idx}`}
+                                          style={{
+                                            border: `1px solid ${token.colorBorderSecondary}`,
+                                            borderRadius: token.borderRadius,
+                                            overflow: 'hidden',
+                                            maxWidth: 300,
+                                            background: token.colorBgContainer,
+                                          }}
+                                        >
+                                          {meta.file_url ? (
+                                            <Image
+                                              src={meta.file_url}
+                                              alt={meta.file_name}
+                                              style={{
+                                                maxWidth: 300,
+                                                maxHeight: 200,
+                                                objectFit: 'contain',
+                                                display: 'block',
+                                              }}
+                                              fallback="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22100%22%3E%3Crect%20fill%3D%22%23f0f0f0%22%20width%3D%22200%22%20height%3D%22100%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20fill%3D%22%23999%22%20font-size%3D%2214%22%3EОшибка%3C%2Ftext%3E%3C%2Fsvg%3E"
+                                            />
+                                          ) : (
+                                            <div style={{ padding: 16, textAlign: 'center' }}>
+                                              <FileOutlined
+                                                style={{ fontSize: 32, color: token.colorTextQuaternary }}
+                                              />
+                                            </div>
+                                          )}
+                                          <div
+                                            style={{
+                                              padding: '6px 10px',
+                                              borderTop: `1px solid ${token.colorBorderSecondary}`,
+                                              fontSize: 12,
+                                              color: token.colorTextSecondary,
+                                              display: 'flex',
+                                              justifyContent: 'space-between',
+                                              alignItems: 'center',
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                                maxWidth: '70%',
+                                              }}
+                                            >
+                                              {meta.file_name}
+                                            </span>
+                                            {meta.file_size ? <span>{formatSize(meta.file_size)}</span> : null}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </Image.PreviewGroup>
                                   </div>
-                                  {(meta.file_type || meta.file_size) && (
-                                    <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                                      {[meta.file_type, formatSize(meta.file_size)]
-                                        .filter(Boolean)
-                                        .join(' · ')}
-                                    </div>
-                                  )}
-                                </div>
-                                {meta.file_url && (
-                                  <a
-                                    href={meta.file_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title="Скачать"
-                                  >
-                                    <DownloadOutlined style={{ fontSize: 16 }} />
-                                  </a>
+                                ) : (
+                                  /* Vector / document files: list with download links */
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {fileMetas.map((meta, idx) => (
+                                      <div
+                                        key={meta.id ?? `${meta.file_name}-${idx}`}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 10,
+                                          padding: '8px 12px',
+                                          border: `1px solid ${token.colorBorderSecondary}`,
+                                          borderRadius: token.borderRadius,
+                                          background: token.colorBgContainer,
+                                        }}
+                                      >
+                                        <FileOutlined
+                                          style={{ fontSize: 18, color: token.colorTextSecondary }}
+                                        />
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div
+                                            style={{
+                                              fontSize: 14,
+                                              fontWeight: 500,
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap',
+                                            }}
+                                          >
+                                            {meta.file_name}
+                                          </div>
+                                          {(meta.file_type || meta.file_size) && (
+                                            <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                                              {[meta.file_type, formatSize(meta.file_size)]
+                                                .filter(Boolean)
+                                                .join(' · ')}
+                                            </div>
+                                          )}
+                                        </div>
+                                        {meta.file_url && (
+                                          <a
+                                            href={meta.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title="Скачать"
+                                          >
+                                            <DownloadOutlined style={{ fontSize: 16 }} />
+                                          </a>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
+                            );
+                          }
 
-                  // ── Regular fields ──
-                  if (rawValue === undefined) return null;
+                          // ── Regular fields ──
+                          if (rawValue === undefined) return null;
 
-                  const formatted = formatFieldValue(field, rawValue);
-                  return (
-                    <div key={field.id}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: token.colorTextSecondary,
-                          marginBottom: 4,
-                        }}
-                      >
-                        {field.label || 'Без названия'}
+                          const formatted = formatFieldValue(field, rawValue);
+                          return (
+                            <div key={field.id}>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: token.colorTextSecondary,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                {field.label || 'Без названия'}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight: 500,
+                                  color: token.colorText,
+                                }}
+                              >
+                                {formatted}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 500,
-                          color: token.colorText,
-                        }}
-                      >
-                        {formatted}
-                      </div>
-                    </div>
-                  );
-                })}
+                    ) : (
+                      <Text type="secondary">У связанной формы нет полей.</Text>
+                    )}
+                  </>
+                )}
               </div>
-            ) : (
-              <Text type="secondary">У связанной формы нет полей.</Text>
-            )}
+            </div>
+
+            {/* Right: AI suggestions panel */}
+            <div
+              style={{
+                width: 360,
+                flexShrink: 0,
+                height: '100%',
+              }}
+            >
+              <div
+                style={{
+                  background: token.colorBgContainer,
+                  height: '100%',
+                  borderLeft: `1px solid ${token.colorBorderSecondary}`,
+                  padding: 16,
+                }}
+              >
+                <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
+                  AI Suggestions
+                </Title>
+                <Text type="secondary">
+                  Здесь позже появятся рекомендации на основе данных заявки.
+                </Text>
+              </div>
+            </div>
           </div>
         )}
       </div>
