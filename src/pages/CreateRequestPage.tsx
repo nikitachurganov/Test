@@ -20,8 +20,13 @@ import {
   type FormResponse,
 } from '../shared/api/forms.api';
 import { createRequest } from '../shared/api/requests.api';
+import { uploadFieldFiles, type FileMetadata } from '../shared/api/files.api';
+import type { Field, FieldOption, FormEntity } from '../types/form';
+import { mapDataToSnapshot } from '../shared/utils/mapDataToSnapshot';
 import type { FormFieldInstance, FormPageInstance } from '../shared/types/form-builder.types';
 import { PreviewField } from '../shared/ui/form-builder/FormPreviewModal';
+
+const FILE_FIELD_TYPES = new Set(['file_image', 'file_vector', 'file_document']);
 
 const { Title, Text } = Typography;
 
@@ -117,18 +122,145 @@ export const CreateRequestPage = () => {
     scrollToTop();
   };
 
+  const collectLeafFields = (fields: FormFieldInstance[]): FormFieldInstance[] => {
+    const result: FormFieldInstance[] = [];
+    const walk = (inner: FormFieldInstance[]) => {
+      for (const field of inner) {
+        if (field.type === 'group' && field.children && field.children.length > 0) {
+          walk(field.children);
+        } else {
+          result.push(field);
+        }
+      }
+    };
+    walk(fields);
+    return result;
+  };
+
+  /** Build snapshot from the SAME instances used for rendering to guarantee ID match */
+  const buildSnapshot = (formRow: FormResponse, pages: FormPageInstance[]): FormEntity => {
+    const allLeafFields: FormFieldInstance[] = [];
+    for (const page of pages) {
+      allLeafFields.push(...collectLeafFields(page.fields));
+    }
+
+    const fields: Field[] = allLeafFields.map((f) => ({
+      id: f.id,
+      label: f.label,
+      type: f.type,
+      options: f.options?.map<FieldOption>((opt) => ({ id: opt.id, label: opt.label })),
+    }));
+
+    return {
+      id: formRow.id,
+      title: formRow.name,
+      fields,
+    };
+  };
+
+  /**
+   * Serializes a single value to a JSON-safe primitive.
+   * File lists are NOT handled here — they go through uploadFieldFiles.
+   */
+  const serializeOne = (val: unknown): unknown => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return val;
+
+    if (typeof val === 'object' && val !== null) {
+      if ('toISOString' in val && typeof (val as Record<string, unknown>).toISOString === 'function') {
+        return (val as { toISOString: () => string }).toISOString();
+      }
+      if (Array.isArray(val)) {
+        return val.map(serializeOne);
+      }
+    }
+    return val;
+  };
+
+  /**
+   * Walks every field value:
+   * - file fields → upload to Supabase Storage, store metadata array
+   * - other fields → serialize to JSON-safe primitives
+   */
+  const processValues = async (
+    raw: Record<string, unknown>,
+    allFields: FormFieldInstance[],
+    requestId: string,
+  ): Promise<Record<string, unknown>> => {
+    const fieldTypeMap = new Map<string, string>();
+    const walk = (fields: FormFieldInstance[]) => {
+      for (const f of fields) {
+        fieldTypeMap.set(f.id, f.type);
+        if (f.type === 'group' && f.children) walk(f.children);
+      }
+    };
+    walk(allFields);
+
+    const out: Record<string, unknown> = {};
+
+    for (const [key, val] of Object.entries(raw)) {
+      const fieldType = fieldTypeMap.get(key);
+
+      if (fieldType && FILE_FIELD_TYPES.has(fieldType) && Array.isArray(val) && val.length > 0) {
+        const hasFiles = val.some(
+          (item: Record<string, unknown>) => item?.originFileObj instanceof File,
+        );
+        if (hasFiles) {
+          const uploaded: FileMetadata[] = await uploadFieldFiles(
+            val as Array<{ originFileObj?: File; name?: string }>,
+            fieldType,
+            requestId,
+            key,
+          );
+          out[key] = uploaded;
+          continue;
+        }
+      }
+
+      out[key] = serializeOne(val);
+    }
+
+    return out;
+  };
+
   const handleSubmit = async () => {
     try {
       const meta = await metaForm.validateFields();
       await form.validateFields();
       setIsSubmitting(true);
 
-      const values = form.getFieldsValue(true);
+      const rawValues = form.getFieldsValue(true);
+
+      const snapshot = selectedForm
+        ? buildSnapshot(selectedForm, pageInstances)
+        : undefined;
+
+      // Generate a stable ID for file storage paths before the DB row exists
+      const pendingRequestId = crypto.randomUUID();
+
+      const allLeafFields: FormFieldInstance[] = [];
+      for (const page of pageInstances) {
+        allLeafFields.push(...collectLeafFields(page.fields));
+      }
+
+      const processed = await processValues(rawValues, allLeafFields, pendingRequestId);
+      const alignedData =
+        snapshot != null ? mapDataToSnapshot(processed, snapshot) : processed;
+
+      if (Object.keys(alignedData).length === 0 && snapshot && snapshot.fields.length > 0) {
+        notification.error({
+          message: 'Ошибка отправки',
+          description: 'Не удалось собрать данные формы. Попробуйте ещё раз.',
+          placement: 'topRight',
+        });
+        return;
+      }
 
       await createRequest({
         title: meta.title,
         form_id: meta.formId,
-        data: values,
+        data: alignedData,
+        form_snapshot: snapshot,
       });
 
       notification.success({
@@ -138,8 +270,14 @@ export const CreateRequestPage = () => {
       });
 
       navigate('/requests');
-    } catch {
-      // errors are shown inline
+    } catch (err) {
+      if (err instanceof Error && !('errorFields' in err)) {
+        notification.error({
+          message: 'Ошибка загрузки файлов',
+          description: err.message,
+          placement: 'topRight',
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -289,7 +427,7 @@ export const CreateRequestPage = () => {
             {/* Step 3 + 4 — fill form */}
             {step === 3 && selectedForm ? (
               hasPages && currentPage && currentPage.fields.length > 0 ? (
-                <Form form={form} layout="vertical" requiredMark={false}>
+                <Form form={form} layout="vertical" requiredMark={false} preserve>
                   {currentPage.fields.map((field) => (
                     <PreviewField key={field.id} field={field} />
                   ))}

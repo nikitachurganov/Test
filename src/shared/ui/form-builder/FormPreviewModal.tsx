@@ -68,6 +68,7 @@ interface FileUploadFieldProps {
 
 const FileUploadField = ({ field }: FileUploadFieldProps) => (
   <Form.Item
+    name={field.id}
     label={
       field.label ? (
         <FieldLabel label={field.label} required={field.required} />
@@ -75,10 +76,26 @@ const FileUploadField = ({ field }: FileUploadFieldProps) => (
     }
     required={field.required}
     help={field.description || undefined}
+    valuePropName="fileList"
+    getValueFromEvent={(e: { fileList?: unknown[] } | unknown[]) => {
+      if (Array.isArray(e)) return e;
+      return (e as { fileList?: unknown[] })?.fileList;
+    }}
+    rules={
+      field.required
+        ? [
+            {
+              validator: (_: unknown, value: unknown[]) =>
+                value && value.length > 0
+                  ? Promise.resolve()
+                  : Promise.reject(new Error('Загрузите файл')),
+            },
+          ]
+        : []
+    }
   >
     <Upload.Dragger
       beforeUpload={() => false}
-      showUploadList={false}
       accept={getFileAccept(field.type)}
     >
       <p style={{ margin: 0 }}>

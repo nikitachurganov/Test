@@ -10,6 +10,7 @@ export interface RequestResponse {
   status: RequestStatus;
   created_at: string;
   updated_at: string;
+  form_snapshot?: unknown | null;
 }
 
 interface DbRequestRow {
@@ -20,6 +21,7 @@ interface DbRequestRow {
   status: RequestStatus;
   created_at: string;
   updated_at: string;
+  form_snapshot?: unknown | null;
 }
 
 export interface CreateRequestPayload {
@@ -27,6 +29,7 @@ export interface CreateRequestPayload {
   form_id: string;
   data: unknown;
   status?: RequestStatus;
+  form_snapshot?: unknown;
 }
 
 export interface UpdateRequestPayload {
@@ -43,6 +46,7 @@ const mapRow = (row: DbRequestRow): RequestResponse => ({
   status: row.status,
   created_at: row.created_at,
   updated_at: row.updated_at,
+  form_snapshot: row.form_snapshot ?? null,
 });
 
 export const getRequests = async (): Promise<RequestResponse[]> => {
@@ -78,6 +82,7 @@ export const createRequest = async (
         form_id: payload.form_id,
         data: payload.data,
         status: payload.status ?? 'open',
+        form_snapshot: payload.form_snapshot ?? null,
       },
     ])
     .select()

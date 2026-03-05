@@ -10,12 +10,18 @@ import type {
 
 /** Shape of a single field stored inside a page (jsonb column) */
 export interface CreateFormFieldPayload {
+  /** Stable field ID persisted in JSON. Optional for legacy data. */
+  id?: string;
   type: string;
   label: string;
   placeholder?: string;
   required: boolean;
-  /** Labels of selectable options (radio / checkbox / dropdown) */
-  options?: string[];
+  /**
+   * Options for radio / checkbox / dropdown.
+   * New shape: array of { id, label } objects to keep option IDs stable.
+   * Legacy shape: array of plain label strings.
+   */
+  options?: Array<string | { id: string; label: string }>;
   /** Child fields — only present for group-type fields */
   children?: CreateFormFieldPayload[];
 }
@@ -71,13 +77,14 @@ export const mapFieldsToPayload = (
   instances: FormFieldInstance[],
 ): CreateFormFieldPayload[] =>
   instances.map((inst) => ({
+    id: inst.id,
     type: inst.type,
     label: inst.label,
     // `description` is the field's hint text — stored as `placeholder` in the API
     placeholder: inst.description || undefined,
     required: inst.required,
-    // Convert FieldOption objects to plain label strings
-    options: inst.options?.map((opt) => opt.label),
+    // Persist option IDs + labels so they remain stable across reloads
+    options: inst.options?.map((opt) => ({ id: opt.id, label: opt.label })),
     // Recursively include children for group-type fields
     children:
       inst.type === 'group' && inst.children?.length
@@ -88,8 +95,10 @@ export const mapFieldsToPayload = (
 /**
  * Reverses mapFieldsToPayload — converts stored payload back to
  * FormFieldInstance so the builder / preview can render it.
- * IDs are generated fresh via crypto.randomUUID(); they will be stable
- * for the lifetime of the component that calls this inside useMemo.
+ *
+ * Important for stability:
+ * - Uses the ID stored in JSON when present
+ * - Only generates a new ID for truly legacy records that don't have one
  */
 export function payloadToInstance(
   payload: CreateFormFieldPayload,
@@ -100,16 +109,37 @@ export function payloadToInstance(
       ? 'file_document'
       : (rawType as FormFieldType);
 
+  const fieldId =
+    typeof payload.id === 'string' && payload.id.trim()
+      ? payload.id
+      : crypto.randomUUID(); // legacy fallback
+
+  const options: FieldOption[] | undefined = payload.options
+    ? payload.options.map((opt) => {
+        if (typeof opt === 'string') {
+          // Legacy shape: only label was stored
+          return {
+            id: crypto.randomUUID(),
+            label: opt,
+          };
+        }
+        return {
+          id:
+            typeof opt.id === 'string' && opt.id.trim()
+              ? opt.id
+              : crypto.randomUUID(),
+          label: opt.label,
+        };
+      })
+    : undefined;
+
   return {
-    id: crypto.randomUUID(),
+    id: fieldId,
     type: normalizedType as FormFieldType,
     label: payload.label,
     description: payload.placeholder ?? '',
     required: payload.required,
-    options: payload.options?.map((label): FieldOption => ({
-      id: crypto.randomUUID(),
-      label,
-    })),
+    options,
     children: payload.children?.map(payloadToInstance),
   };
 }
