@@ -435,174 +435,181 @@ export const RequestViewPage = () => {
                         {/* TODO: Store form snapshot in request at creation time
                             to prevent ID mismatch when form is edited later. */}
                         {fields.map((field) => {
-                          const rawValue = activeDataSource[field.id];
-
-                          // ── File fields: rich preview ──
                           if (
                             field.type === 'file_image' ||
                             field.type === 'file_vector' ||
                             field.type === 'file_document'
-                          ) {
-                            const fileMetas = normalizeFileValues(rawValue);
-                            if (!fileMetas.length) return null;
+                          ) return null;
 
-                            return (
-                              <div key={field.id}>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: token.colorTextSecondary,
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  {field.label || 'Без названия'}
-                                </div>
-
-                                {/* Images get a thumbnail grid with preview */}
-                                {field.type === 'file_image' ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                                    <Image.PreviewGroup>
-                                      {fileMetas.map((meta, idx) => (
-                                        <div
-                                          key={meta.id ?? `${meta.file_name}-${idx}`}
-                                          style={{
-                                            border: `1px solid ${token.colorBorderSecondary}`,
-                                            borderRadius: token.borderRadius,
-                                            overflow: 'hidden',
-                                            maxWidth: 300,
-                                            background: token.colorBgContainer,
-                                          }}
-                                        >
-                                          {meta.file_url ? (
-                                            <Image
-                                              src={meta.file_url}
-                                              alt={meta.file_name}
-                                              style={{
-                                                maxWidth: 300,
-                                                maxHeight: 200,
-                                                objectFit: 'contain',
-                                                display: 'block',
-                                              }}
-                                              fallback="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22100%22%3E%3Crect%20fill%3D%22%23f0f0f0%22%20width%3D%22200%22%20height%3D%22100%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20fill%3D%22%23999%22%20font-size%3D%2214%22%3EОшибка%3C%2Ftext%3E%3C%2Fsvg%3E"
-                                            />
-                                          ) : (
-                                            <div style={{ padding: 16, textAlign: 'center' }}>
-                                              <FileOutlined
-                                                style={{ fontSize: 32, color: token.colorTextQuaternary }}
-                                              />
-                                            </div>
-                                          )}
-                                          <div
-                                            style={{
-                                              padding: '6px 10px',
-                                              borderTop: `1px solid ${token.colorBorderSecondary}`,
-                                              fontSize: 12,
-                                              color: token.colorTextSecondary,
-                                              display: 'flex',
-                                              justifyContent: 'space-between',
-                                              alignItems: 'center',
-                                            }}
-                                          >
-                                            <span
-                                              style={{
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap',
-                                                maxWidth: '70%',
-                                              }}
-                                            >
-                                              {meta.file_name}
-                                            </span>
-                                            {meta.file_size ? <span>{formatSize(meta.file_size)}</span> : null}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </Image.PreviewGroup>
-                                  </div>
-                                ) : (
-                                  /* Vector / document files: list with download links */
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                    {fileMetas.map((meta, idx) => (
-                                      <div
-                                        key={meta.id ?? `${meta.file_name}-${idx}`}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 10,
-                                          padding: '8px 12px',
-                                          border: `1px solid ${token.colorBorderSecondary}`,
-                                          borderRadius: token.borderRadius,
-                                          background: token.colorBgContainer,
-                                        }}
-                                      >
-                                        <FileOutlined
-                                          style={{ fontSize: 18, color: token.colorTextSecondary }}
-                                        />
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                          <div
-                                            style={{
-                                              fontSize: 14,
-                                              fontWeight: 500,
-                                              overflow: 'hidden',
-                                              textOverflow: 'ellipsis',
-                                              whiteSpace: 'nowrap',
-                                            }}
-                                          >
-                                            {meta.file_name}
-                                          </div>
-                                          {(meta.file_type || meta.file_size) && (
-                                            <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                                              {[meta.file_type, formatSize(meta.file_size)]
-                                                .filter(Boolean)
-                                                .join(' · ')}
-                                            </div>
-                                          )}
-                                        </div>
-                                        {meta.file_url && (
-                                          <a
-                                            href={meta.file_url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            title="Скачать"
-                                          >
-                                            <DownloadOutlined style={{ fontSize: 16 }} />
-                                          </a>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }
-
-                          // ── Regular fields ──
+                          const rawValue = activeDataSource[field.id];
                           if (rawValue === undefined) return null;
 
                           const formatted = formatFieldValue(field, rawValue);
                           return (
                             <div key={field.id}>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: token.colorTextSecondary,
-                                  marginBottom: 4,
-                                }}
+                              <Text
+                                type="secondary"
+                                style={{ fontSize: 12, marginBottom: 4, display: 'block' }}
                               >
                                 {field.label || 'Без названия'}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 500,
-                                  color: token.colorText,
-                                }}
-                              >
+                              </Text>
+                              <Text style={{ fontSize: 14, fontWeight: 500 }}>
                                 {formatted}
-                              </div>
+                              </Text>
                             </div>
                           );
                         })}
+
+                        {(() => {
+                          const fileFields = fields.filter(
+                            (f) =>
+                              f.type === 'file_image' ||
+                              f.type === 'file_vector' ||
+                              f.type === 'file_document',
+                          );
+                          const nonEmptyFileFields = fileFields.filter(
+                            (f) => normalizeFileValues(activeDataSource[f.id]).length > 0,
+                          );
+                          if (!nonEmptyFileFields.length) return null;
+
+                          return (
+                            <div style={{ marginTop: token.marginSM }}>
+                              <Title level={5} style={{ marginBottom: token.marginSM }}>
+                                Файлы
+                              </Title>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                {nonEmptyFileFields.map((field) => {
+                                  const fileMetas = normalizeFileValues(activeDataSource[field.id]);
+
+                                  return (
+                                    <div key={field.id}>
+                                      <Text
+                                        type="secondary"
+                                        style={{ fontSize: 12, marginBottom: 8, display: 'block' }}
+                                      >
+                                        {field.label || 'Без названия'}
+                                      </Text>
+
+                                      {field.type === 'file_image' ? (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                                          <Image.PreviewGroup>
+                                            {fileMetas.map((meta, idx) => (
+                                              <div
+                                                key={meta.id ?? `${meta.file_name}-${idx}`}
+                                                style={{
+                                                  border: `1px solid ${token.colorBorderSecondary}`,
+                                                  borderRadius: token.borderRadius,
+                                                  overflow: 'hidden',
+                                                  maxWidth: 300,
+                                                  background: token.colorBgContainer,
+                                                }}
+                                              >
+                                                {meta.file_url ? (
+                                                  <Image
+                                                    src={meta.file_url}
+                                                    alt={meta.file_name}
+                                                    style={{
+                                                      maxWidth: 300,
+                                                      maxHeight: 200,
+                                                      objectFit: 'contain',
+                                                      display: 'block',
+                                                    }}
+                                                    fallback="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22100%22%3E%3Crect%20fill%3D%22%23f0f0f0%22%20width%3D%22200%22%20height%3D%22100%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%20fill%3D%22%23999%22%20font-size%3D%2214%22%3EОшибка%3C%2Ftext%3E%3C%2Fsvg%3E"
+                                                  />
+                                                ) : (
+                                                  <div style={{ padding: 16, textAlign: 'center' }}>
+                                                    <FileOutlined
+                                                      style={{ fontSize: 32, color: token.colorTextQuaternary }}
+                                                    />
+                                                  </div>
+                                                )}
+                                                <div
+                                                  style={{
+                                                    padding: '6px 10px',
+                                                    borderTop: `1px solid ${token.colorBorderSecondary}`,
+                                                    fontSize: 12,
+                                                    color: token.colorTextSecondary,
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{
+                                                      overflow: 'hidden',
+                                                      textOverflow: 'ellipsis',
+                                                      whiteSpace: 'nowrap',
+                                                      maxWidth: '70%',
+                                                    }}
+                                                  >
+                                                    {meta.file_name}
+                                                  </span>
+                                                  {meta.file_size ? <span>{formatSize(meta.file_size)}</span> : null}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </Image.PreviewGroup>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                          {fileMetas.map((meta, idx) => (
+                                            <div
+                                              key={meta.id ?? `${meta.file_name}-${idx}`}
+                                              style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                padding: '8px 12px',
+                                                border: `1px solid ${token.colorBorderSecondary}`,
+                                                borderRadius: token.borderRadius,
+                                                background: token.colorBgContainer,
+                                              }}
+                                            >
+                                              <FileOutlined
+                                                style={{ fontSize: 18, color: token.colorTextSecondary }}
+                                              />
+                                              <div style={{ flex: 1, minWidth: 0 }}>
+                                                <Text
+                                                  style={{
+                                                    fontSize: 14,
+                                                    fontWeight: 500,
+                                                    display: 'block',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                  }}
+                                                >
+                                                  {meta.file_name}
+                                                </Text>
+                                                {(meta.file_type || meta.file_size) && (
+                                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                                    {[meta.file_type, formatSize(meta.file_size)]
+                                                      .filter(Boolean)
+                                                      .join(' · ')}
+                                                  </Text>
+                                                )}
+                                              </div>
+                                              {meta.file_url && (
+                                                <a
+                                                  href={meta.file_url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  title="Скачать"
+                                                >
+                                                  <DownloadOutlined style={{ fontSize: 16 }} />
+                                                </a>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <Text type="secondary">У связанной формы нет полей.</Text>
