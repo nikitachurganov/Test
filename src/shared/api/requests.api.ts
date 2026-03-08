@@ -8,6 +8,7 @@ export interface RequestResponse {
   form_id: string;
   data: unknown;
   status: RequestStatus;
+  closedAt: string | null;
   created_at: string;
   updated_at: string;
   form_snapshot?: unknown | null;
@@ -19,6 +20,7 @@ interface DbRequestRow {
   form_id: string;
   data: unknown;
   status: RequestStatus;
+  closed_at: string | null;
   created_at: string;
   updated_at: string;
   form_snapshot?: unknown | null;
@@ -35,6 +37,7 @@ export interface CreateRequestPayload {
 export interface UpdateRequestPayload {
   title?: string;
   status?: RequestStatus;
+  closedAt?: string | null;
   data?: unknown;
 }
 
@@ -44,6 +47,7 @@ const mapRow = (row: DbRequestRow): RequestResponse => ({
   form_id: row.form_id,
   data: row.data,
   status: row.status,
+  closedAt: row.closed_at,
   created_at: row.created_at,
   updated_at: row.updated_at,
   form_snapshot: row.form_snapshot ?? null,
@@ -96,18 +100,31 @@ export const updateRequest = async (
   id: string,
   payload: UpdateRequestPayload,
 ): Promise<RequestResponse> => {
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (payload.title !== undefined) updatePayload.title = payload.title;
+  if (payload.status !== undefined) updatePayload.status = payload.status;
+  if (payload.data !== undefined) updatePayload.data = payload.data;
+  if (payload.closedAt !== undefined) updatePayload.closed_at = payload.closedAt;
+
   const { data, error } = await supabase
     .from('requests')
-    .update({
-      ...payload,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', id)
     .select()
     .single();
 
   if (error) throw new Error(error.message);
   return mapRow(data as DbRequestRow);
+};
+
+export const closeRequest = async (id: string): Promise<RequestResponse> => {
+  return updateRequest(id, {
+    status: 'closed',
+    closedAt: new Date().toISOString(),
+  });
 };
 
 export const deleteRequest = async (id: string): Promise<void> => {

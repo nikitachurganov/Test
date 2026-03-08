@@ -894,7 +894,7 @@ export const FormEditor = ({
                   tabBarExtraContent={
                     <span
                       style={{
-                        color: '#1677ff',
+                        color: token.colorPrimary,
                         cursor: 'pointer',
                         marginLeft: 8,
                         userSelect: 'none',

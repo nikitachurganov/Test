@@ -54,7 +54,7 @@ export const GroupBlock = ({
         {/* Group type badge */}
         <div style={{ marginBottom: 8 }}>
           <Tag
-            color="blue"
+            color="processing"
             style={{ borderRadius: token.borderRadiusSM, fontSize: 11, userSelect: 'none' }}
           >
             Группа полей

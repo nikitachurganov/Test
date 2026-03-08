@@ -1,6 +1,7 @@
-import { Layout, Menu, Switch, Typography, theme } from 'antd';
+import { useState } from 'react';
+import { Avatar, Button, Dropdown, Layout, Menu, Spin, Switch, Typography, theme } from 'antd';
 import { GlobalScrollbarStyles } from './shared/ui/GlobalScrollbarStyles';
-import { MoonOutlined, SunOutlined } from '@ant-design/icons';
+import { EllipsisOutlined, UserOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import {
   Navigate,
@@ -10,6 +11,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { useAuth } from './shared/context/auth.context';
 import { useThemeMode } from './shared/context/theme.context';
 import { CreateFormPage } from './pages/CreateFormPage';
 import { EditFormPage } from './pages/EditFormPage';
@@ -19,6 +21,9 @@ import { FormsPage } from './pages/FormsPage';
 import { RequestsPage } from './pages/RequestsPage';
 import { CreateRequestPage } from './pages/CreateRequestPage';
 import { RequestViewPage } from './pages/RequestViewPage';
+import { AuthPage } from './pages/AuthPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
 const { Content, Sider } = Layout;
 const { Text } = Typography;
@@ -45,10 +50,125 @@ const getSelectedMenuKey = (pathname: string): string => {
   return matched?.key ?? 'requests';
 };
 
+const ProfileBlock = () => {
+  const { token } = theme.useToken();
+  const { user, profile, signOut } = useAuth();
+  const { themeMode, toggleTheme } = useThemeMode();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const fullName =
+    profile?.fullName ??
+    (typeof user?.user_metadata.full_name === 'string' ? user.user_metadata.full_name : '');
+  const email = profile?.email ?? user?.email ?? '';
+  const avatarUrl = profile?.avatarUrl ?? null;
+  const displayName = fullName.trim() || 'User';
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const profileMenuItems: MenuProps['items'] = [
+    { key: 'settings', label: 'Settings' },
+    { type: 'divider' },
+    {
+      key: 'theme',
+      label: (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            width: '100%',
+            minWidth: 140,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span>Theme</span>
+          <Switch
+            checked={themeMode === 'dark'}
+            onChange={toggleTheme}
+            size="small"
+            aria-label={themeMode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          />
+        </div>
+      ),
+    },
+    { key: 'support', label: 'Support' },
+    { key: 'feedback', label: 'Feedback' },
+    { type: 'divider' },
+    { key: 'logout', label: 'Log out' },
+  ];
+
+  const handleProfileMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'logout') {
+      void handleSignOut();
+    }
+    // Settings, Support, Feedback: placeholders for future handlers
+  };
+
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderTop: 'rgba(255, 255, 255, 0.12) 1px solid',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexShrink: 0,
+      }}
+    >
+      <Avatar src={avatarUrl ?? undefined} icon={<UserOutlined />} size={36}>
+        {!avatarUrl ? displayName.charAt(0).toUpperCase() : null}
+      </Avatar>
+
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <Text
+          strong
+          style={{ color: token.colorTextLightSolid, fontSize: 13, display: 'block' }}
+          ellipsis={{ tooltip: displayName }}
+        >
+          {displayName}
+        </Text>
+        <Text
+          style={{
+            color: token.colorTextLightSolid,
+            opacity: 0.75,
+            fontSize: 12,
+            display: 'block',
+          }}
+          ellipsis={{ tooltip: email }}
+        >
+          {email || 'No email'}
+        </Text>
+      </div>
+
+      <Dropdown
+        trigger={['click']}
+        menu={{
+          items: profileMenuItems,
+          onClick: handleProfileMenuClick,
+        }}
+      >
+        <Button
+          type="text"
+          icon={<EllipsisOutlined />}
+          aria-label="Profile actions"
+          style={{ color: token.colorTextLightSolid }}
+          loading={isSigningOut}
+        />
+      </Dropdown>
+    </div>
+  );
+};
+
 const AppLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { themeMode, toggleTheme } = useThemeMode();
   const { token } = theme.useToken();
   const selectedKey = getSelectedMenuKey(location.pathname);
 
@@ -61,103 +181,114 @@ const AppLayout = () => {
 
   return (
     <>
-    <GlobalScrollbarStyles />
-    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-      <Sider width={240} theme="dark">
-        {/*
-         * Inner wrapper makes the sider a flex column so the theme
-         * switcher can sit flush at the bottom.
-         */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-          }}
-        >
-          {/* Logo / app name */}
+      <GlobalScrollbarStyles />
+      <Layout style={{ height: '100vh', overflow: 'hidden' }}>
+        <Sider width={240} theme="dark">
           <div
             style={{
-              height: 64,
-              paddingInline: 16,
               display: 'flex',
-              alignItems: 'center',
-              flexShrink: 0,
+              flexDirection: 'column',
+              height: '100%',
             }}
           >
-            {/* colorTextLightSolid is always #fff — correct for a dark sider */}
-            <Text
-              strong
-              style={{ color: token.colorTextLightSolid, fontSize: 16 }}
+            <div
+              style={{
+                height: 64,
+                paddingInline: 16,
+                display: 'flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
             >
-              Service Desk
-            </Text>
+              <Text strong style={{ color: token.colorTextLightSolid, fontSize: 16 }}>
+                Service Desk
+              </Text>
+            </div>
+
+            <Menu
+              theme="dark"
+              mode="inline"
+              items={menuItems}
+              selectedKeys={[selectedKey]}
+              onClick={handleMenuClick}
+              style={{ flex: 1, borderInlineEnd: 'none' }}
+            />
+
+            <ProfileBlock />
           </div>
+        </Sider>
 
-          {/* Navigation — flex: 1 pushes the switcher to the bottom */}
-          <Menu
-            theme="dark"
-            mode="inline"
-            items={menuItems}
-            selectedKeys={[selectedKey]}
-            onClick={handleMenuClick}
-            style={{ flex: 1, borderInlineEnd: 'none' }}
-          />
-
-          {/* Theme switcher */}
-          <div
+        <Layout style={{ overflow: 'hidden', minHeight: 0 }}>
+          <Content
             style={{
-              padding: '16px',
-              borderTop: 'rgba(255, 255, 255, 0.12) 1px solid',
               display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexShrink: 0,
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              background: token.colorBgLayout,
             }}
           >
-            <Switch
-              checked={themeMode === 'dark'}
-              onChange={toggleTheme}
-              checkedChildren={<MoonOutlined aria-hidden="true" />}
-              unCheckedChildren={<SunOutlined aria-hidden="true" />}
-              aria-label={
-                themeMode === 'dark'
-                  ? 'Переключить на светлую тему'
-                  : 'Переключить на тёмную тему'
-              }
-            />
-            <Text style={{ color: token.colorTextLightSolid, fontSize: 13 }}>
-              {themeMode === 'dark' ? 'Тёмная' : 'Светлая'}
-            </Text>
-          </div>
-        </div>
-      </Sider>
-
-      <Layout style={{ overflow: 'hidden', minHeight: 0 }}>
-        <Content
-          style={{
-            display: 'flex',
-            flex: 1,
-            minHeight: 0,
-            overflow: 'hidden',
-            // colorBgLayout adapts to light (#f5f5f5) / dark (#000) algorithm
-            background: token.colorBgLayout,
-          }}
-        >
-          <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <Outlet />
-          </div>
-        </Content>
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <Outlet />
+            </div>
+          </Content>
+        </Layout>
       </Layout>
-    </Layout>
     </>
   );
 };
 
+const FullPageLoader = () => (
+  <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+    <Spin size="large" />
+  </div>
+);
+
+const ProtectedLayout = () => {
+  const { user, isAuthLoading } = useAuth();
+  const location = useLocation();
+
+  if (isAuthLoading) {
+    return <FullPageLoader />;
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace state={{ from: location.pathname }} />;
+  }
+
+  return <AppLayout />;
+};
+
+const PublicOnlyAuthPage = () => {
+  const { user, isAuthLoading } = useAuth();
+
+  if (isAuthLoading) {
+    return <FullPageLoader />;
+  }
+
+  if (user) {
+    return <Navigate to="/requests" replace />;
+  }
+
+  return <AuthPage />;
+};
+
 const router = createBrowserRouter([
   {
+    path: '/auth/forgot-password',
+    element: <ForgotPasswordPage />,
+  },
+  {
+    path: '/auth/reset-password',
+    element: <ResetPasswordPage />,
+  },
+  {
+    path: '/auth',
+    element: <PublicOnlyAuthPage />,
+  },
+  {
     path: '/',
-    element: <AppLayout />,
+    element: <ProtectedLayout />,
     children: [
       {
         index: true,

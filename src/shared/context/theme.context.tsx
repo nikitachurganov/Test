@@ -61,8 +61,8 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
   // Keep the document background in sync so areas outside antd components
   // (e.g., html/body) don't flash white in dark mode.
   useEffect(() => {
-    document.body.style.background =
-      themeMode === 'dark' ? '#141414' : '#ffffff';
+    const { colorBgLayout } = antdTheme.getDesignToken({ algorithm: algorithmMap[themeMode] });
+    document.body.style.background = colorBgLayout;
   }, [themeMode]);
 
   const value = useMemo<ThemeContextValue>(

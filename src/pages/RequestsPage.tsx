@@ -22,8 +22,8 @@ import {
 const { Title } = Typography;
 
 const statusView: Record<RequestResponse['status'], { color: string; label: string }> = {
-  open: { color: 'blue', label: 'Открыта' },
-  closed: { color: 'gray', label: 'Закрыта' },
+  open: { color: 'processing', label: 'Открыта' },
+  closed: { color: 'error', label: 'Закрыта' },
 };
 
 function formatDate(iso: string): string {

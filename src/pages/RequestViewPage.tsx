@@ -1,22 +1,28 @@
 import { useEffect, useState } from 'react';
 import {
+  Avatar,
   Alert,
-  Badge,
   Breadcrumb,
   Button,
+  Card,
   Descriptions,
+  Divider,
   Image,
   Popconfirm,
+  Space,
   Spin,
   Tabs,
+  Tag,
+  Timeline,
   Typography,
+  message,
   notification,
   theme,
 } from 'antd';
 import { ArrowLeftOutlined, FileOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getRequestWithForm, type RequestWithForm } from '../services/requestService';
-import { deleteRequest } from '../shared/api/requests.api';
+import { closeRequest, deleteRequest } from '../shared/api/requests.api';
 import { formatFieldValue } from '../shared/utils/formatFieldValue';
 import type { Field } from '../types/form';
 
@@ -45,6 +51,13 @@ const formatDate = (iso: string | undefined): string => {
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
 };
 
+const formatDateTime = (iso: string | null | undefined): string => {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 export const RequestViewPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -56,6 +69,7 @@ export const RequestViewPage = () => {
     error: null,
   });
   const [deleting, setDeleting] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'history' | 'people'>('info');
 
   useEffect(() => {
@@ -185,6 +199,39 @@ export const RequestViewPage = () => {
     }
   };
 
+  const handleCloseRequest = async () => {
+    if (!data?.request || data.request.status === 'closed') return;
+
+    setClosing(true);
+    try {
+      const updatedRequest = await closeRequest(data.request.id);
+      setState((prev) =>
+        prev.data
+          ? {
+              ...prev,
+              data: {
+                ...prev.data,
+                request: {
+                  ...prev.data.request,
+                  status: updatedRequest.status,
+                  closedAt: updatedRequest.closedAt,
+                  updated_at: updatedRequest.updated_at,
+                },
+              },
+            }
+          : prev,
+      );
+      notification.success({ message: 'Заявка закрыта' });
+    } catch (err) {
+      notification.error({
+        message: 'Ошибка закрытия',
+        description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
+      });
+    } finally {
+      setClosing(false);
+    }
+  };
+
   useEffect(() => {
     if (!data) return;
 
@@ -272,6 +319,23 @@ export const RequestViewPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {data?.request && (
               <Popconfirm
+                title="Are you sure you want to close this request?"
+                okText="OK"
+                cancelText="Cancel"
+                onConfirm={handleCloseRequest}
+                disabled={data.request.status === 'closed'}
+              >
+                <Button
+                  type="default"
+                  loading={closing}
+                  disabled={data.request.status === 'closed'}
+                >
+                  Закрыть заявку
+                </Button>
+              </Popconfirm>
+            )}
+            {data?.request && (
+              <Popconfirm
                 title="Are you sure you want to delete this request?"
                 okText="OK"
                 cancelText="Cancel"
@@ -301,10 +365,21 @@ export const RequestViewPage = () => {
                 key: 'status',
                 label: <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>Статус</Text>,
                 children: (
-                  <Badge
-                    status="processing"
-                    text={<Text style={{ fontSize: 13 }}>Открыта</Text>}
-                  />
+                  <Tag
+                    color={
+                      data.request.status === 'closed'
+                        ? 'error'
+                        : data.request.status === 'open'
+                        ? 'processing'
+                        : 'warning'
+                    }
+                  >
+                    {data.request.status === 'closed'
+                      ? 'Закрыта'
+                      : data.request.status === 'open'
+                      ? 'Открыта'
+                      : 'В работе'}
+                  </Tag>
                 ),
               },
               {
@@ -402,7 +477,7 @@ export const RequestViewPage = () => {
                 type="line"
                 items={[
                   { key: 'info', label: 'Информация' },
-                  { key: 'history', label: 'История', disabled: true },
+                  { key: 'history', label: 'История' },
                   { key: 'people', label: 'Люди', disabled: true },
                 ]}
               />
@@ -616,6 +691,36 @@ export const RequestViewPage = () => {
                     )}
                   </>
                 )}
+                {activeTab === 'history' && data?.request && (
+                  <Timeline
+                    items={[
+                      {
+                        children: (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <Text style={{ fontWeight: 500 }}>Заявка создана</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {formatDateTime(data.request.created_at)}
+                            </Text>
+                          </div>
+                        ),
+                      },
+                      ...(data.request.status === 'closed' && data.request.closedAt
+                        ? [
+                            {
+                              children: (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <Text style={{ fontWeight: 500 }}>Заявка закрыта</Text>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {formatDateTime(data.request.closedAt)}
+                                  </Text>
+                                </div>
+                              ),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                )}
               </div>
             </div>
 
@@ -633,14 +738,77 @@ export const RequestViewPage = () => {
                   height: '100%',
                   borderLeft: `1px solid ${token.colorBorderSecondary}`,
                   padding: 16,
+                  overflowY: 'auto',
                 }}
               >
-                <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
-                  AI Suggestions
-                </Title>
-                <Text type="secondary">
-                  Здесь позже появятся рекомендации на основе данных заявки.
-                </Text>
+                <Space direction="vertical" size={token.marginMD} style={{ width: '100%' }}>
+                  <Card
+                    size="small"
+                    title={<Text strong>Чего не хватает</Text>}
+                    styles={{ body: { paddingTop: token.paddingSM } }}
+                  >
+                    <Text type="secondary">
+                      ИИ может проанализировать заявку и подсказать, какой информации может не
+                      хватать или что может быть непонятно исполнителям.
+                    </Text>
+                    <Divider style={{ marginBlock: token.marginSM }} />
+                    <Text type="secondary">
+                      Заглушка: здесь будут отображаться недостающие детали и подсказки для уточнения.
+                    </Text>
+                  </Card>
+
+                  <Card
+                    size="small"
+                    title={<Text strong>Генерация ТЗ</Text>}
+                    styles={{ body: { paddingTop: token.paddingSM } }}
+                  >
+                    <Text type="secondary">
+                      Сформировать техническое задание для исполнителя на основе информации из
+                      заявки.
+                    </Text>
+                    <Divider style={{ marginBlock: token.marginSM }} />
+                    <Button
+                      type="primary"
+                      onClick={() => message.info('Генерация ТЗ будет доступна позже')}
+                    >
+                      Сгенерировать ТЗ
+                    </Button>
+                  </Card>
+
+                  <Card
+                    size="small"
+                    title={<Text strong>Кому перенаправить</Text>}
+                    styles={{ body: { paddingTop: token.paddingSM } }}
+                  >
+                    <Text type="secondary">
+                      ИИ может предложить, кому лучше передать эту заявку на исполнение.
+                    </Text>
+                    <Divider style={{ marginBlock: token.marginSM }} />
+                    <Space direction="vertical" size={token.paddingSM} style={{ width: '100%' }}>
+                      <Space align="center" size={token.paddingSM}>
+                        <Avatar>АК</Avatar>
+                        <div>
+                          <Text style={{ display: 'block' }}>Алексей Ковалев</Text>
+                          <Text type="secondary">Backend‑разработчик</Text>
+                        </div>
+                      </Space>
+                      <Space align="center" size={token.paddingSM}>
+                        <Avatar>МС</Avatar>
+                        <div>
+                          <Text style={{ display: 'block' }}>Мария Смирнова</Text>
+                          <Text type="secondary">QA / Автоматизация</Text>
+                        </div>
+                      </Space>
+                      <Space align="center" size={token.paddingSM}>
+                        <Avatar>ИД</Avatar>
+                        <div>
+                          <Text style={{ display: 'block' }}>Иван Демидов</Text>
+                          <Text type="secondary">DevOps‑инженер</Text>
+                        </div>
+                      </Space>
+                    </Space>
+                  </Card>
+                </Space>
               </div>
             </div>
           </div>

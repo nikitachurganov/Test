@@ -6,6 +6,7 @@ export interface RequestEntity {
   form_id: string;
   data: Record<string, unknown>;
   status: 'open' | 'closed';
+  closedAt: string | null;
   created_at: string;
   updated_at: string;
   form_snapshot?: FormEntity | null;

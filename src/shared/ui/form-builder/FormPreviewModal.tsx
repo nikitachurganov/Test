@@ -490,7 +490,7 @@ export const FormPreviewModal = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           Предпросмотр формы
           <Tag
-            color="blue"
+            color="processing"
             style={{ marginLeft: 4, fontWeight: 400, fontSize: 12 }}
           >
             Только просмотр

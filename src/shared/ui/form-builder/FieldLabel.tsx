@@ -13,7 +13,7 @@ export const FieldLabel = ({ label, required }: FieldLabelProps) => (
   <span>
     {label}
     {required && (
-      <span style={{ color: '#ff4d4f', marginLeft: 4 }} aria-hidden>
+      <span style={{ marginLeft: 4 }} aria-hidden>
         *
       </span>
     )}

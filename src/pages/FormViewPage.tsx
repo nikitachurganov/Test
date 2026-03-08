@@ -193,7 +193,7 @@ export const FormViewPage = () => {
               {pageTitle}
             </Title>
             {!loading && formData && (
-              <Tag color="blue" style={{ fontWeight: 400 }}>
+              <Tag color="processing" style={{ fontWeight: 400 }}>
                 Просмотр
               </Tag>
             )}
