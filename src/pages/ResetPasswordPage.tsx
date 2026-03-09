@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Flex, Form, Input, Spin, Typography, message } from 'antd';
+import { useState } from 'react';
+import { Alert, App, Button, Card, Flex, Form, Input, Typography } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import { signOut, updatePassword } from '../shared/api/auth.api';
-import { supabase } from '../shared/lib/supabase';
 
 interface ResetPasswordFormValues {
   password: string;
@@ -11,76 +10,17 @@ interface ResetPasswordFormValues {
 
 const mapResetError = (error: unknown): string => {
   if (!(error instanceof Error)) {
-    return 'Unexpected error. Please try again.';
+    return 'Неожиданная ошибка. Попробуйте ещё раз.';
   }
   return error.message;
 };
 
-const hasRecoveryParamsInHash = (): boolean => {
-  const rawHash = window.location.hash.startsWith('#')
-    ? window.location.hash.slice(1)
-    : window.location.hash;
-  const hashParams = new URLSearchParams(rawHash);
-  return hashParams.get('type') === 'recovery' && Boolean(hashParams.get('access_token'));
-};
-
 export const ResetPasswordPage = () => {
-  const [isCheckingLink, setIsCheckingLink] = useState(true);
-  const [isRecoveryReady, setIsRecoveryReady] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const { message } = App.useApp();
 
   const navigate = useNavigate();
-  const hasRecoveryParams = useMemo(hasRecoveryParamsInHash, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const initializeRecovery = async () => {
-      if (!hasRecoveryParams) {
-        if (isMounted) {
-          setErrorText('Recovery link is invalid or missing. Request a new password reset email.');
-          setIsCheckingLink(false);
-        }
-        return;
-      }
-
-      const { data, error } = await supabase.auth.getSession();
-      if (!isMounted) {
-        return;
-      }
-
-      if (error || !data.session) {
-        setErrorText('Recovery link is invalid or expired. Please request a new one.');
-        setIsRecoveryReady(false);
-      } else {
-        setErrorText(null);
-        setIsRecoveryReady(true);
-      }
-      setIsCheckingLink(false);
-    };
-
-    void initializeRecovery();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) {
-        return;
-      }
-
-      if (event === 'PASSWORD_RECOVERY' && session) {
-        setErrorText(null);
-        setIsRecoveryReady(true);
-        setIsCheckingLink(false);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, [hasRecoveryParams]);
 
   const handleSubmit = async (values: ResetPasswordFormValues) => {
     setIsSubmitting(true);
@@ -89,7 +29,7 @@ export const ResetPasswordPage = () => {
     try {
       await updatePassword(values.password);
       await signOut();
-      message.success('Password updated. Please sign in with your new password.');
+      message.success('Пароль обновлён. Войдите, используя новый пароль.');
       navigate('/auth', { replace: true });
     } catch (error) {
       setErrorText(mapResetError(error));
@@ -107,68 +47,58 @@ export const ResetPasswordPage = () => {
       gap={16}
     >
       <Typography.Title level={3} style={{ margin: 0 }}>
-        Service Desk
+        Сервис Деск
       </Typography.Title>
 
       <Card style={{ width: '100%', maxWidth: 420 }}>
         <Typography.Title level={4} style={{ marginTop: 0 }}>
-          Reset password
+          Сбросить пароль
         </Typography.Title>
 
-        {isCheckingLink ? (
-          <Flex align="center" gap={12}>
-            <Spin size="small" />
-            <Typography.Text type="secondary">Validating recovery link...</Typography.Text>
-          </Flex>
-        ) : null}
-
-        {!isCheckingLink && errorText ? (
+        {errorText ? (
           <Alert type="error" showIcon message={errorText} style={{ marginBottom: 16 }} />
         ) : null}
 
-        {!isCheckingLink && isRecoveryReady ? (
-          <Form<ResetPasswordFormValues> layout="vertical" onFinish={handleSubmit} disabled={isSubmitting}>
-            <Form.Item
-              name="password"
-              label="New password"
-              rules={[
-                { required: true, message: 'Password is required' },
-                { min: 8, message: 'Password must be at least 8 characters' },
-              ]}
-            >
-              <Input.Password autoComplete="new-password" placeholder="Enter new password" />
-            </Form.Item>
+        <Form<ResetPasswordFormValues> layout="vertical" onFinish={handleSubmit} disabled={isSubmitting}>
+          <Form.Item
+            name="password"
+            label="Новый пароль"
+            rules={[
+              { required: true, message: 'Пароль обязателен' },
+              { min: 8, message: 'Пароль должен содержать не менее 8 символов' },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" placeholder="Введите новый пароль" />
+          </Form.Item>
 
-            <Form.Item
-              name="confirmPassword"
-              label="Confirm password"
-              dependencies={['password']}
-              rules={[
-                { required: true, message: 'Please confirm the password' },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue('password') === value) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(new Error('Passwords do not match'));
-                  },
-                }),
-              ]}
-            >
-              <Input.Password autoComplete="new-password" placeholder="Repeat new password" />
-            </Form.Item>
+          <Form.Item
+            name="confirmPassword"
+            label="Подтвердите пароль"
+            dependencies={['password']}
+            rules={[
+              { required: true, message: 'Подтвердите пароль' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('Пароли не совпадают'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password autoComplete="new-password" placeholder="Повторите новый пароль" />
+          </Form.Item>
 
-            <Button type="primary" htmlType="submit" block loading={isSubmitting}>
-              Update password
-            </Button>
-          </Form>
-        ) : null}
+          <Button type="primary" htmlType="submit" block loading={isSubmitting}>
+            Обновить пароль
+          </Button>
+        </Form>
       </Card>
 
       <Typography.Text type="secondary">
-        Back to <Link to="/auth">sign in</Link>
+        <Link to="/auth">Вернуться ко входу</Link>
       </Typography.Text>
     </Flex>
   );
 };
-

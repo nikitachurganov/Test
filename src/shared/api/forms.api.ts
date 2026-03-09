@@ -1,10 +1,11 @@
-import { supabase } from '../lib/supabase';
+import api from '../lib/api';
 import type {
   FieldOption,
   FormFieldInstance,
   FormFieldType,
   FormPageInstance,
 } from '../types/form-builder.types';
+import type { AuthorPreview } from '../../types/author';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ export interface CreateFormFieldPayload {
   children?: CreateFormFieldPayload[];
 }
 
-/** Single page (step) stored in Supabase JSON column */
+/** Single page (step) stored in JSON column */
 export interface CreateFormPagePayload {
   id: string;
   title: string;
@@ -53,16 +54,8 @@ export interface FormResponse {
   name: string;
   description: string;
   pages: CreateFormPagePayload[];
-  created_at: string;
-  updated_at: string;
-}
-
-/** Raw row returned from the `forms` table */
-interface DbFormRow {
-  id: string;
-  name: string;
-  description: string | null;
-  fields: unknown;
+  created_by_user_id: string | null;
+  author: AuthorPreview | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,7 +64,7 @@ interface DbFormRow {
 
 /**
  * Recursively maps a list of FormFieldInstance objects to the flat payload
- * shape the API / Supabase column expects (used inside pages).
+ * shape the API column expects (used inside pages).
  */
 export const mapFieldsToPayload = (
   instances: FormFieldInstance[],
@@ -80,12 +73,9 @@ export const mapFieldsToPayload = (
     id: inst.id,
     type: inst.type,
     label: inst.label,
-    // `description` is the field's hint text — stored as `placeholder` in the API
     placeholder: inst.description || undefined,
     required: inst.required,
-    // Persist option IDs + labels so they remain stable across reloads
     options: inst.options?.map((opt) => ({ id: opt.id, label: opt.label })),
-    // Recursively include children for group-type fields
     children:
       inst.type === 'group' && inst.children?.length
         ? mapFieldsToPayload(inst.children)
@@ -95,10 +85,6 @@ export const mapFieldsToPayload = (
 /**
  * Reverses mapFieldsToPayload — converts stored payload back to
  * FormFieldInstance so the builder / preview can render it.
- *
- * Important for stability:
- * - Uses the ID stored in JSON when present
- * - Only generates a new ID for truly legacy records that don't have one
  */
 export function payloadToInstance(
   payload: CreateFormFieldPayload,
@@ -112,12 +98,11 @@ export function payloadToInstance(
   const fieldId =
     typeof payload.id === 'string' && payload.id.trim()
       ? payload.id
-      : crypto.randomUUID(); // legacy fallback
+      : crypto.randomUUID();
 
   const options: FieldOption[] | undefined = payload.options
     ? payload.options.map((opt) => {
         if (typeof opt === 'string') {
-          // Legacy shape: only label was stored
           return {
             id: crypto.randomUUID(),
             label: opt,
@@ -157,11 +142,11 @@ export const mapPagesToPayload = (
   }));
 
 /**
- * Normalizes raw `fields` JSON from Supabase into a pages array.
+ * Normalizes raw `fields` JSON from the API into a pages array.
  * Backward compatibility: if `fields` is a flat array of field payloads,
  * wraps them into a single default page.
  */
-const normalizePagesFromDb = (rawFields: unknown): CreateFormPagePayload[] => {
+const normalizePagesFromApi = (rawFields: unknown): CreateFormPagePayload[] => {
   const arr = Array.isArray(rawFields) ? rawFields : [];
   if (arr.length === 0) {
     return [];
@@ -169,7 +154,6 @@ const normalizePagesFromDb = (rawFields: unknown): CreateFormPagePayload[] => {
 
   const first = arr[0] as any;
 
-  // New shape: pages already stored
   if (first && typeof first === 'object' && 'fields' in first) {
     return (arr as any[]).map((page, index) => ({
       id: typeof page.id === 'string' ? page.id : crypto.randomUUID(),
@@ -181,7 +165,6 @@ const normalizePagesFromDb = (rawFields: unknown): CreateFormPagePayload[] => {
     }));
   }
 
-  // Legacy shape: flat field array — wrap into a single page
   return [
     {
       id: crypto.randomUUID(),
@@ -206,100 +189,44 @@ export const pagesPayloadToInstances = (
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const getForms = async (): Promise<FormResponse[]> => {
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(error.message);
-  const rows = (data ?? []) as DbFormRow[];
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description ?? '',
-    pages: normalizePagesFromDb(row.fields),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+  const { data } = await api.get<FormResponse[]>('/forms');
+  return data.map((row) => ({
+    ...row,
+    pages: row.pages ?? normalizePagesFromApi(row.pages),
   }));
 };
 
 export const getFormById = async (id: string): Promise<FormResponse> => {
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) throw new Error(error.message);
-  const row = data as DbFormRow;
+  const { data } = await api.get<FormResponse>(`/forms/${id}`);
   return {
-    id: row.id,
-    name: row.name,
-    description: row.description ?? '',
-    pages: normalizePagesFromDb(row.fields),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    ...data,
+    pages: data.pages ?? normalizePagesFromApi(data.pages),
   };
 };
 
 export const createForm = async (
   payload: CreateFormPayload,
 ): Promise<FormResponse> => {
-  const { data, error } = await supabase
-    .from('forms')
-    .insert([
-      {
-        name: payload.name,
-        description: payload.description ?? null,
-        // Persist pages array in the `fields` jsonb column for backward compatibility
-        fields: payload.pages,
-      },
-    ])
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  const row = data as DbFormRow;
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description ?? '',
-    pages: normalizePagesFromDb(row.fields),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
+  const { data } = await api.post<FormResponse>('/forms', {
+    name: payload.name,
+    description: payload.description ?? null,
+    pages: payload.pages,
+  });
+  return data;
 };
 
 export const updateForm = async (
   id: string,
   payload: UpdateFormPayload,
 ): Promise<FormResponse> => {
-  const { data, error } = await supabase
-    .from('forms')
-    .update({
-      name: payload.name,
-      description: payload.description ?? null,
-      // Persist pages array in the `fields` jsonb column for backward compatibility
-      fields: payload.pages,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  const row = data as DbFormRow;
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description ?? '',
-    pages: normalizePagesFromDb(row.fields),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
+  const { data } = await api.put<FormResponse>(`/forms/${id}`, {
+    name: payload.name,
+    description: payload.description ?? null,
+    pages: payload.pages,
+  });
+  return data;
 };
 
 export const deleteForm = async (id: string): Promise<void> => {
-  const { error } = await supabase.from('forms').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+  await api.delete(`/forms/${id}`);
 };

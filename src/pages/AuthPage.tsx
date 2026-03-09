@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Alert,
+  App,
   Button,
   Card,
   Flex,
@@ -9,7 +10,6 @@ import {
   Space,
   Tabs,
   Typography,
-  message,
 } from 'antd';
 import type { TabsProps } from 'antd';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -23,35 +23,37 @@ interface SignInFormValues {
 }
 
 interface SignUpFormValues extends SignInFormValues {
-  fullName: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
   phoneNumber: string;
   confirmPassword: string;
 }
 
 const emailRules = [
-  { required: true, message: 'Email is required' },
-  { type: 'email' as const, message: 'Enter a valid email' },
+  { required: true, message: 'Электронная почта обязательна' },
+  { type: 'email' as const, message: 'Введите действительный адрес электронной почты' },
 ];
 
 const phoneRules = [
-  { required: true, message: 'Phone number is required' },
+  { required: true, message: 'Номер телефона обязателен' },
   {
     pattern: /^\+?[0-9]{10,15}$/,
-    message: 'Use international format: +1234567890',
+    message: 'Используйте международный формат: +1234567890',
   },
 ];
 
 const mapAuthError = (error: unknown): string => {
   if (!(error instanceof Error)) {
-    return 'Unexpected authentication error';
+    return 'Неожиданная ошибка аутентификации';
   }
 
   if (error.message.includes('Invalid login credentials')) {
-    return 'Invalid email or password';
+    return 'Неверный адрес электронной почты или пароль';
   }
 
   if (error.message.includes('User already registered')) {
-    return 'A user with this email already exists';
+    return 'Пользователь с таким адресом электронной почты уже зарегистрирован';
   }
 
   return error.message;
@@ -61,6 +63,7 @@ export const AuthPage = () => {
   const [activeKey, setActiveKey] = useState<AuthTabKey>('sign-in');
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const { message } = App.useApp();
 
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
@@ -76,7 +79,7 @@ export const AuthPage = () => {
 
     try {
       await signIn(values);
-      message.success('Successfully signed in');
+      message.success('Вы успешно вошли');
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setErrorText(mapAuthError(error));
@@ -91,15 +94,17 @@ export const AuthPage = () => {
 
     try {
       const result = await signUp({
-        fullName: values.fullName.trim(),
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        middleName: values.middleName?.trim() || undefined,
         email: values.email.trim().toLowerCase(),
         phoneNumber: values.phoneNumber.trim(),
         password: values.password,
       });
       message.success(
         result.requiresEmailConfirmation
-          ? 'Registration successful. Confirm your email before signing in.'
-          : 'Registration successful. You can now sign in.',
+          ? 'Регистрация успешна. Подтвердите адрес электронной почты перед входом.'
+          : 'Регистрация успешна. Теперь вы можете войти.',
       );
       setActiveKey('sign-in');
     } catch (error) {
@@ -112,87 +117,102 @@ export const AuthPage = () => {
   const tabItems: TabsProps['items'] = [
     {
       key: 'sign-in',
-      label: 'Sign in',
+      label: 'Вход',
       children: (
         <Form<SignInFormValues> layout="vertical" onFinish={onSignIn} disabled={loading}>
-          <Form.Item name="email" label="Email" rules={emailRules}>
+          <Form.Item name="email" label="Электронная почта" rules={emailRules}>
             <Input autoComplete="email" placeholder="name@example.com" />
           </Form.Item>
 
           <Form.Item
             name="password"
-            label="Password"
-            rules={[{ required: true, message: 'Password is required' }]}
+            label="Пароль"
+            rules={[{ required: true, message: 'Пароль обязателен' }]}
           >
-            <Input.Password autoComplete="current-password" placeholder="Enter password" />
+            <Input.Password autoComplete="current-password" placeholder="Введите пароль" />
           </Form.Item>
 
           <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <Link to="/auth/forgot-password">Forgot password?</Link>
+            <Link to="/auth/forgot-password">Забыли пароль?</Link>
           </Space>
 
           <Button type="primary" htmlType="submit" block loading={loading}>
-            Sign in
+            Войти
           </Button>
         </Form>
       ),
     },
     {
       key: 'sign-up',
-      label: 'Sign up',
+      label: 'Регистрация',
       children: (
         <Form<SignUpFormValues> layout="vertical" onFinish={onSignUp} disabled={loading}>
           <Form.Item
-            name="fullName"
-            label="Full name"
+            name="lastName"
+            label="Фамилия"
             rules={[
-              { required: true, message: 'Full name is required' },
-              { min: 2, message: 'Name is too short' },
+              { required: true, message: 'Фамилия обязательна' },
+              { min: 2, message: 'Фамилия слишком короткая' },
             ]}
           >
-            <Input autoComplete="name" placeholder="John Doe" maxLength={120} />
+            <Input autoComplete="family-name" placeholder="Иванов" maxLength={100} />
           </Form.Item>
 
-          <Form.Item name="email" label="Email" rules={emailRules}>
+          <Form.Item
+            name="firstName"
+            label="Имя"
+            rules={[
+              { required: true, message: 'Имя обязательно' },
+              { min: 2, message: 'Имя слишком короткое' },
+            ]}
+          >
+            <Input autoComplete="given-name" placeholder="Иван" maxLength={100} />
+          </Form.Item>
+
+          <Form.Item name="middleName" label="Отчество (необязательно)">
+            <Input autoComplete="additional-name" placeholder="Иванович" maxLength={100} />
+          </Form.Item>
+
+          <Form.Item name="email" label="Электронная почта" rules={emailRules}>
             <Input autoComplete="email" placeholder="name@example.com" />
           </Form.Item>
 
-          <Form.Item name="phoneNumber" label="Phone number" rules={phoneRules}>
-            <Input autoComplete="tel" placeholder="+12345678901" maxLength={16} />
+          <Form.Item name="phoneNumber" label="Номер телефона" rules={phoneRules}>
+            <Input autoComplete="tel" placeholder="+79001234567" maxLength={16} />
           </Form.Item>
 
           <Form.Item
             name="password"
-            label="Password"
+            label="Пароль"
             rules={[
-              { required: true, message: 'Password is required' },
-              { min: 8, message: 'Password must be at least 8 characters' },
+              { required: true, message: 'Пароль обязателен' },
+              { min: 8, message: 'Пароль должен содержать не менее 8 символов' },
             ]}
           >
-            <Input.Password autoComplete="new-password" placeholder="Create password" />
+            <Input.Password autoComplete="new-password" placeholder="Придумайте пароль" />
           </Form.Item>
 
           <Form.Item
             name="confirmPassword"
-            label="Confirm password"
+            label="Подтвердите пароль"
             dependencies={['password']}
             rules={[
-              { required: true, message: 'Please confirm the password' },
+              { required: true, message: 'Подтвердите пароль' },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue('password') === value) {
                     return Promise.resolve();
                   }
-                  return Promise.reject(new Error('Passwords do not match'));
+                  return Promise.reject(new Error('Пароли не совпадают'));
                 },
               }),
             ]}
           >
-            <Input.Password autoComplete="new-password" placeholder="Repeat password" />
+            <Input.Password autoComplete="new-password" placeholder="Повторите пароль" />
           </Form.Item>
 
           <Button type="primary" htmlType="submit" block loading={loading}>
-            Sign up
+            Зарегистрироваться
           </Button>
         </Form>
       ),
@@ -208,7 +228,7 @@ export const AuthPage = () => {
       gap={16}
     >
       <Typography.Title level={3} style={{ margin: 0 }}>
-        Service Desk
+        Сервис Деск
       </Typography.Title>
       <Card style={{ width: '100%', maxWidth: 420 }}>
         {errorText ? (
@@ -233,7 +253,7 @@ export const AuthPage = () => {
       </Card>
 
       <Typography.Text type="secondary">
-        By continuing, you agree to use your corporate account credentials.
+        Продолжая, вы соглашаетесь использовать учётные данные корпоративной учётной записи.
       </Typography.Text>
     </Flex>
   );

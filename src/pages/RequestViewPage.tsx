@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import {
   Avatar,
   Alert,
+  App,
   Breadcrumb,
   Button,
   Card,
   Descriptions,
   Divider,
+  Grid,
   Image,
   Popconfirm,
   Space,
@@ -15,8 +17,6 @@ import {
   Tag,
   Timeline,
   Typography,
-  message,
-  notification,
   theme,
 } from 'antd';
 import { ArrowLeftOutlined, FileOutlined, DownloadOutlined } from '@ant-design/icons';
@@ -24,6 +24,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getRequestWithForm, type RequestWithForm } from '../services/requestService';
 import { closeRequest, deleteRequest } from '../shared/api/requests.api';
 import { formatFieldValue } from '../shared/utils/formatFieldValue';
+import { buildDisplayName } from '../shared/utils/userName';
 import type { Field } from '../types/form';
 
 interface StoredFileMeta {
@@ -62,6 +63,9 @@ export const RequestViewPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const { message, notification } = App.useApp();
+  const screens = Grid.useBreakpoint();
+  const showAiPanel = !!screens.xl;
 
   const [{ data, loading, error }, setState] = useState<RequestDetailsState>({
     data: null,
@@ -115,18 +119,15 @@ export const RequestViewPage = () => {
   const parsedData = data?.parsedData ?? {};
 
   const fieldIds = fields.map((f) => f.id);
-  const dataKeys = Object.keys(parsedData);
   const maybeValues = (parsedData as Record<string, unknown>).values;
   const nestedValues =
     maybeValues && typeof maybeValues === 'object' && !Array.isArray(maybeValues)
       ? (maybeValues as Record<string, unknown>)
       : undefined;
-  const nestedKeys = nestedValues ? Object.keys(nestedValues) : [];
 
   const hasDirectMatches = fieldIds.some((fieldId) => fieldId in parsedData);
   const activeDataSource = hasDirectMatches ? parsedData : (nestedValues ?? parsedData);
   const activeKeys = Object.keys(activeDataSource);
-  const missingFieldIds = fieldIds.filter((fieldId) => !(fieldId in activeDataSource));
   const extraDataKeys = activeKeys.filter((key) => !fieldIds.includes(key));
 
   const isNonEmptyValue = (value: unknown): boolean => {
@@ -187,11 +188,11 @@ export const RequestViewPage = () => {
     setDeleting(true);
     try {
       await deleteRequest(data.request.id);
-      notification.success({ message: 'Заявка удалена' });
+      notification.success({ title: 'Заявка удалена' });
       navigate('/requests');
     } catch (err) {
       notification.error({
-        message: 'Ошибка удаления',
+        title: 'Ошибка удаления',
         description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
       });
     } finally {
@@ -221,10 +222,10 @@ export const RequestViewPage = () => {
             }
           : prev,
       );
-      notification.success({ message: 'Заявка закрыта' });
+      notification.success({ title: 'Заявка закрыта' });
     } catch (err) {
       notification.error({
-        message: 'Ошибка закрытия',
+        title: 'Ошибка закрытия',
         description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
       });
     } finally {
@@ -232,27 +233,6 @@ export const RequestViewPage = () => {
     }
   };
 
-  useEffect(() => {
-    if (!data) return;
-
-    // Debug: verify loaded field IDs and data keys for this request
-    // eslint-disable-next-line no-console
-    console.log('Loaded field IDs:', fieldIds);
-    // eslint-disable-next-line no-console
-    console.log('REQUEST DATA KEYS:', dataKeys);
-    if (nestedValues) {
-      // eslint-disable-next-line no-console
-      console.log('REQUEST DATA KEYS (values):', nestedKeys);
-    }
-    if (missingFieldIds.length > 0) {
-      // eslint-disable-next-line no-console
-      console.warn('Missing field IDs in request data:', missingFieldIds);
-    }
-    if (extraDataKeys.length > 0) {
-      // eslint-disable-next-line no-console
-      console.warn('Extra keys in request data:', extraDataKeys);
-    }
-  }, [data, fieldIds, dataKeys, nestedValues, nestedKeys, missingFieldIds, extraDataKeys]);
 
   return (
     <div
@@ -319,9 +299,9 @@ export const RequestViewPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {data?.request && (
               <Popconfirm
-                title="Are you sure you want to close this request?"
-                okText="OK"
-                cancelText="Cancel"
+                title="Вы уверены, что хотите закрыть заявку?"
+                okText="Да"
+                cancelText="Отмена"
                 onConfirm={handleCloseRequest}
                 disabled={data.request.status === 'closed'}
               >
@@ -336,9 +316,9 @@ export const RequestViewPage = () => {
             )}
             {data?.request && (
               <Popconfirm
-                title="Are you sure you want to delete this request?"
-                okText="OK"
-                cancelText="Cancel"
+                title="Вы уверены, что хотите удалить заявку?"
+                okText="Удалить"
+                cancelText="Отмена"
                 okButtonProps={{ danger: true }}
                 onConfirm={handleDelete}
               >
@@ -394,7 +374,16 @@ export const RequestViewPage = () => {
               {
                 key: 'author',
                 label: <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>Автор</Text>,
-                children: <Text style={{ fontSize: 13 }}>—</Text>,
+                children: data.request.author ? (
+                  <Space direction="vertical" size={0}>
+                    <Text style={{ fontSize: 13 }}>{buildDisplayName(data.request.author)}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {data.request.author.email}
+                    </Text>
+                  </Space>
+                ) : (
+                  <Text style={{ fontSize: 13 }}>Неизвестный автор</Text>
+                ),
               },
               {
                 key: 'createdAt',
@@ -724,8 +713,8 @@ export const RequestViewPage = () => {
               </div>
             </div>
 
-            {/* Right: AI suggestions panel */}
-            <div
+            {/* Right: AI suggestions panel (hidden on smaller screens) */}
+            {showAiPanel && <div
               style={{
                 width: 360,
                 flexShrink: 0,
@@ -810,7 +799,7 @@ export const RequestViewPage = () => {
                   </Card>
                 </Space>
               </div>
-            </div>
+            </div>}
           </div>
         )}
       </div>

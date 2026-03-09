@@ -7,8 +7,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
 import {
   signInWithEmail,
   signOut as signOutRequest,
@@ -20,9 +18,13 @@ import {
 import { getProfileById } from '../api/profiles.api';
 import type { UserProfile } from '../../types/profile';
 
+interface AuthUser {
+  id: string;
+  email: string;
+}
+
 interface AuthContextValue {
-  session: Session | null;
-  user: User | null;
+  user: AuthUser | null;
   profile: UserProfile | null;
   isAuthLoading: boolean;
   signIn: (payload: SignInPayload) => Promise<void>;
@@ -34,85 +36,68 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  const loadProfile = useCallback(async (nextUser: User | null) => {
-    if (!nextUser) {
+  const loadProfile = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setUser(null);
       setProfile(null);
       return;
     }
 
-    const existingProfile = await getProfileById(nextUser.id);
-    setProfile(existingProfile);
+    try {
+      const p = await getProfileById('me');
+      if (p) {
+        setUser({ id: p.id, email: p.email });
+        setProfile(p);
+      } else {
+        setUser(null);
+        setProfile(null);
+        localStorage.removeItem('access_token');
+      }
+    } catch {
+      setUser(null);
+      setProfile(null);
+      localStorage.removeItem('access_token');
+    }
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) {
-          throw error;
-        }
-        const nextSession = data.session;
-        const nextUser = nextSession?.user ?? null;
-
-        if (!isMounted) {
-          return;
-        }
-
-        setSession(nextSession);
-        setUser(nextUser);
-
-        await loadProfile(nextUser);
-      } finally {
-        if (isMounted) {
-          setIsAuthLoading(false);
-        }
-      }
-    };
-
-    void initializeAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      const nextUser = nextSession?.user ?? null;
-      setUser(nextUser);
-      void loadProfile(nextUser);
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
+    void loadProfile().finally(() => setIsAuthLoading(false));
   }, [loadProfile]);
 
-  const signIn = useCallback(async (payload: SignInPayload) => {
-    await signInWithEmail(payload);
-  }, []);
+  const signIn = useCallback(
+    async (payload: SignInPayload) => {
+      await signInWithEmail(payload);
+      await loadProfile();
+    },
+    [loadProfile],
+  );
 
-  const signUp = useCallback(async (payload: SignUpPayload) => {
-    return signUpWithEmail(payload);
-  }, []);
+  const signUp = useCallback(
+    async (payload: SignUpPayload) => {
+      const result = await signUpWithEmail(payload);
+      await loadProfile();
+      return result;
+    },
+    [loadProfile],
+  );
 
   const signOut = useCallback(async () => {
     await signOutRequest();
+    setUser(null);
     setProfile(null);
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    await loadProfile(user);
-  }, [loadProfile, user]);
+    await loadProfile();
+  }, [loadProfile]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      session,
       user,
       profile,
       isAuthLoading,
@@ -121,7 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       signOut,
       refreshProfile,
     }),
-    [session, user, profile, isAuthLoading, signIn, signUp, signOut, refreshProfile],
+    [user, profile, isAuthLoading, signIn, signUp, signOut, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -134,4 +119,3 @@ export const useAuth = (): AuthContextValue => {
   }
   return context;
 };
-

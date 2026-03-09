@@ -40,6 +40,7 @@ const mapForm = (row: FormResponse): FormEntity => {
     id: row.id,
     title: row.name,
     fields,
+    author: row.author,
   };
 };
 
@@ -72,6 +73,8 @@ export async function getRequestWithForm(id: string): Promise<RequestWithForm> {
       data: parsedData,
       status: requestRow.status,
       closedAt: requestRow.closedAt,
+      created_by_user_id: requestRow.created_by_user_id,
+      author: requestRow.author,
       created_at: requestRow.created_at,
       updated_at: requestRow.updated_at,
       form_snapshot: snapshot,

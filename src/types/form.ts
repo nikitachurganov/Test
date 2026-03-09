@@ -1,3 +1,5 @@
+import type { AuthorPreview } from './author';
+
 export interface FieldOption {
   id: string;
   label: string;
@@ -14,5 +16,6 @@ export interface FormEntity {
   id: string;
   title: string;
   fields: Field[];
+  author?: AuthorPreview | null;
 }
 

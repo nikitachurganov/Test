@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  App,
   Breadcrumb,
   Button,
   Form,
@@ -9,7 +10,6 @@ import {
   Space,
   Spin,
   Typography,
-  notification,
   theme,
 } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
@@ -50,6 +50,7 @@ interface MetaFormValues {
 export const CreateRequestPage = () => {
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
 
   const [forms, setForms] = useState<FormResponse[]>([]);
   const [loadingForms, setLoadingForms] = useState(true);
@@ -179,7 +180,7 @@ export const CreateRequestPage = () => {
 
   /**
    * Walks every field value:
-   * - file fields → upload to Supabase Storage, store metadata array
+   * - file fields → upload to storage, store metadata array
    * - other fields → serialize to JSON-safe primitives
    */
   const processValues = async (
@@ -249,7 +250,7 @@ export const CreateRequestPage = () => {
 
       if (Object.keys(alignedData).length === 0 && snapshot && snapshot.fields.length > 0) {
         notification.error({
-          message: 'Ошибка отправки',
+          title: 'Ошибка отправки',
           description: 'Не удалось собрать данные формы. Попробуйте ещё раз.',
           placement: 'topRight',
         });
@@ -264,7 +265,7 @@ export const CreateRequestPage = () => {
       });
 
       notification.success({
-        message: 'Заявка создана',
+        title: 'Заявка создана',
         description: 'Новая заявка успешно добавлена в реестр.',
         placement: 'topRight',
       });
@@ -273,7 +274,7 @@ export const CreateRequestPage = () => {
     } catch (err) {
       if (err instanceof Error && !('errorFields' in err)) {
         notification.error({
-          message: 'Ошибка загрузки файлов',
+          title: 'Ошибка загрузки файлов',
           description: err.message,
           placement: 'topRight',
         });

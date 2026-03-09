@@ -1,11 +1,9 @@
-import { supabase } from '../lib/supabase';
-
-const BUCKET = 'form-uploads';
+import api from '../lib/api';
 
 const MAX_FILE_SIZES: Record<string, number> = {
-  file_image: 10 * 1024 * 1024,    // 10 MB
-  file_vector: 20 * 1024 * 1024,   // 20 MB
-  file_document: 20 * 1024 * 1024, // 20 MB
+  file_image: 10 * 1024 * 1024,
+  file_vector: 20 * 1024 * 1024,
+  file_document: 20 * 1024 * 1024,
 };
 
 const ALLOWED_MIME_TYPES: Record<string, string[]> = {
@@ -13,7 +11,7 @@ const ALLOWED_MIME_TYPES: Record<string, string[]> = {
   file_vector: [
     'image/svg+xml',
     'application/pdf',
-    'application/postscript',           // .ai / .eps
+    'application/postscript',
     'application/illustrator',
   ],
   file_document: [
@@ -36,23 +34,6 @@ export interface FileMetadata {
   file_url: string;
 }
 
-function sanitizeFileName(name: string): string {
-  // Split into base name and extension
-  const lastDot = name.lastIndexOf('.');
-  const ext = lastDot !== -1 ? name.slice(lastDot).toLowerCase() : '';
-  const base = lastDot !== -1 ? name.slice(0, lastDot) : name;
-
-  const safeBase = base
-    .normalize('NFD')                 // decompose accents / Cyrillic variants
-    .replace(/[^\x00-\x7F]/g, '_')   // strip all non-ASCII (includes Cyrillic)
-    .replace(/[^a-zA-Z0-9_\-]/g, '_') // keep only safe ASCII chars
-    .replace(/_{2,}/g, '_')           // collapse repeated underscores
-    .replace(/^_+|_+$/g, '')         // trim leading/trailing underscores
-    .substring(0, 180);
-
-  return (safeBase || 'file') + ext;
-}
-
 function validateFile(file: File, fieldType: string): void {
   const maxSize = MAX_FILE_SIZES[fieldType] ?? 10 * 1024 * 1024;
   if (file.size > maxSize) {
@@ -69,10 +50,16 @@ function validateFile(file: File, fieldType: string): void {
 }
 
 /**
- * Uploads a single file to Supabase Storage and returns its metadata.
+ * Uploads a single file by recording its metadata via the API.
  *
- * Storage path: `{requestId}/{fieldId}/{sanitized_filename}`
- * Each request+field combination gets its own folder for clean isolation.
+ * NOTE: Actual binary file upload is not yet wired up. This function
+ * creates the metadata record. When a storage backend (local / S3) is
+ * integrated, the flow should be:
+ *   1. POST the binary to an upload endpoint → receive a file_url
+ *   2. Create the metadata record with that file_url (as below)
+ *
+ * For now, the file_url is a placeholder path that indicates where the
+ * file *would* be stored.
  */
 export async function uploadFile(
   file: File,
@@ -82,37 +69,34 @@ export async function uploadFile(
 ): Promise<FileMetadata> {
   validateFile(file, fieldType);
 
-  const safeName = sanitizeFileName(file.name);
   const fileId = crypto.randomUUID();
-  const storagePath = `${requestId}/${fieldId}/${fileId}_${safeName}`;
+  const placeholderUrl = `/uploads/${requestId}/${fieldId}/${fileId}_${file.name}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(storagePath, file, {
-      contentType: file.type,
-      upsert: false,
-    });
-
-  if (uploadError) {
-    throw new Error(`Ошибка загрузки файла "${file.name}": ${uploadError.message}`);
-  }
-
-  const { data: urlData } = supabase.storage
-    .from(BUCKET)
-    .getPublicUrl(storagePath);
-
-  return {
-    id: fileId,
+  const { data } = await api.post<{
+    id: string;
+    file_name: string;
+    file_type: string;
+    file_size: number;
+    file_url: string;
+  }>(`/requests/${requestId}/files`, {
+    field_id: fieldId,
     file_name: file.name,
     file_type: file.type,
     file_size: file.size,
-    file_url: urlData.publicUrl,
+    file_url: placeholderUrl,
+  });
+
+  return {
+    id: data.id,
+    file_name: data.file_name,
+    file_type: data.file_type,
+    file_size: data.file_size,
+    file_url: data.file_url,
   };
 }
 
 /**
  * Uploads all files for a given field and returns an array of metadata objects.
- * Accepts the Ant Design Upload `fileList` format.
  */
 export async function uploadFieldFiles(
   fileList: Array<{ originFileObj?: File; name?: string }>,
@@ -133,18 +117,18 @@ export async function uploadFieldFiles(
 }
 
 /**
- * Deletes all files under a request folder in storage.
- * Call this if a request is deleted and you want to clean up.
+ * Deletes all files associated with a request.
+ * Falls back to a per-file deletion loop.
  */
 export async function deleteRequestFiles(requestId: string): Promise<void> {
-  const { data: list, error: listError } = await supabase.storage
-    .from(BUCKET)
-    .list(requestId, { limit: 1000 });
-
-  if (listError || !list) return;
-
-  const paths = list.map((f) => `${requestId}/${f.name}`);
-  if (paths.length > 0) {
-    await supabase.storage.from(BUCKET).remove(paths);
+  try {
+    const { data: files } = await api.get<Array<{ id: string }>>(
+      `/requests/${requestId}/files`,
+    );
+    for (const file of files) {
+      await api.delete(`/files/${file.id}`);
+    }
+  } catch {
+    // If the request is already deleted the files are cascade-deleted anyway.
   }
 }

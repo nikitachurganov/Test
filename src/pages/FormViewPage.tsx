@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  App,
   Breadcrumb,
   Button,
   Form,
@@ -9,7 +10,6 @@ import {
   Spin,
   Tag,
   Typography,
-  notification,
   theme,
 } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
@@ -20,6 +20,7 @@ import {
   pagesPayloadToInstances,
   type FormResponse,
 } from '../shared/api/forms.api';
+import { buildDisplayName } from '../shared/utils/userName';
 import { PreviewField } from '../shared/ui/form-builder/FormPreviewModal';
 import type { FormFieldInstance, FormPageInstance } from '../shared/types/form-builder.types';
 
@@ -45,6 +46,7 @@ export const FormViewPage = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
 
   const [formData, setFormData] = useState<FormResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,7 +119,7 @@ export const FormViewPage = () => {
       setIsSubmitting(true);
       await new Promise<void>((resolve) => setTimeout(resolve, 500));
       notification.success({
-        message: 'Форма заполнена',
+        title: 'Форма заполнена',
         description: 'Это публичный просмотр — данные не отправляются.',
         placement: 'topRight',
       });
@@ -133,11 +135,11 @@ export const FormViewPage = () => {
     setIsDeleting(true);
     try {
       await deleteForm(id);
-      notification.success({ message: 'Форма удалена' });
+      notification.success({ title: 'Форма удалена' });
       navigate('/forms');
     } catch (err) {
       notification.error({
-        message: 'Ошибка удаления',
+        title: 'Ошибка удаления',
         description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
       });
       setIsDeleting(false);
@@ -260,6 +262,9 @@ export const FormViewPage = () => {
                 {formData.description}
               </Text>
             )}
+            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+              Автор: {formData?.author ? buildDisplayName(formData.author) : 'Неизвестный автор'}
+            </Text>
 
             {hasPages && currentPage && currentPage.fields.length > 0 ? (
               <Form form={form} layout="vertical" requiredMark={false}>

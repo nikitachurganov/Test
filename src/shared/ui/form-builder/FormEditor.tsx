@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import {
+  App,
   Breadcrumb,
   Button,
   Card,
@@ -10,7 +11,6 @@ import {
   Tabs,
   Tooltip,
   Typography,
-  notification,
   theme,
 } from 'antd';
 import { ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons';
@@ -289,6 +289,7 @@ interface InlinePreviewProps {
 
 const InlinePreview = ({ formTitle, pages }: InlinePreviewProps) => {
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
   const [form] = Form.useForm();
   const [pageIndex, setPageIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -328,7 +329,7 @@ const InlinePreview = ({ formTitle, pages }: InlinePreviewProps) => {
       setIsSubmitting(true);
       await new Promise<void>((resolve) => setTimeout(resolve, 500));
       notification.success({
-        message: 'Форма отправлена',
+        title: 'Форма отправлена',
         description: 'Это предпросмотр — данные не сохраняются.',
         placement: 'topRight',
       });
@@ -418,6 +419,7 @@ export const FormEditor = ({
   onBack,
 }: FormEditorProps) => {
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
 
   const [formTitle, setFormTitle] = useState<string>(initialTitle);
   const resolvedInitialPages: FormPageInstance[] =
@@ -681,7 +683,7 @@ export const FormEditor = ({
   const handleSave = useCallback(async () => {
     if (!formTitle.trim()) {
       notification.warning({
-        message: 'Необходимо указать название',
+        title: 'Необходимо указать название',
         description: 'Введите название формы перед сохранением.',
         placement: 'topRight',
       });
@@ -693,7 +695,7 @@ export const FormEditor = ({
       await onSave(formTitle.trim(), pages);
     } catch (err) {
       notification.error({
-        message: 'Ошибка при сохранении',
+        title: 'Ошибка при сохранении',
         description:
           err instanceof Error ? err.message : 'Не удалось сохранить форму.',
         placement: 'topRight',

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Spin, notification, theme } from 'antd';
+import { Alert, App, Spin, theme } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getFormById,
@@ -15,6 +15,7 @@ export const EditFormPage = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
 
   const [formData, setFormData] = useState<FormResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +51,7 @@ export const EditFormPage = () => {
     });
 
     notification.success({
-      message: 'Форма обновлена',
+      title: 'Форма обновлена',
       description: `Форма «${title}» успешно обновлена.`,
       placement: 'topRight',
     });

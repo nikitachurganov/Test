@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Avatar, Button, Dropdown, Layout, Menu, Spin, Switch, Typography, theme } from 'antd';
+import { Avatar, Button, Dropdown, Grid, Layout, Menu, Spin, Switch, Typography, theme } from 'antd';
 import { GlobalScrollbarStyles } from './shared/ui/GlobalScrollbarStyles';
-import { EllipsisOutlined, UserOutlined } from '@ant-design/icons';
+import { EllipsisOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import {
   Navigate,
@@ -24,6 +24,7 @@ import { RequestViewPage } from './pages/RequestViewPage';
 import { AuthPage } from './pages/AuthPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { buildDisplayName } from './shared/utils/userName';
 
 const { Content, Sider } = Layout;
 const { Text } = Typography;
@@ -56,12 +57,15 @@ const ProfileBlock = () => {
   const { themeMode, toggleTheme } = useThemeMode();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
-  const fullName =
-    profile?.fullName ??
-    (typeof user?.user_metadata.full_name === 'string' ? user.user_metadata.full_name : '');
   const email = profile?.email ?? user?.email ?? '';
   const avatarUrl = profile?.avatarUrl ?? null;
-  const displayName = fullName.trim() || 'User';
+  const displayName = profile
+    ? buildDisplayName({
+        lastName: profile.lastName,
+        firstName: profile.firstName,
+        middleName: profile.middleName,
+      }) || 'Пользователь'
+    : 'Пользователь';
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -73,7 +77,7 @@ const ProfileBlock = () => {
   };
 
   const profileMenuItems: MenuProps['items'] = [
-    { key: 'settings', label: 'Settings' },
+    { key: 'settings', label: 'Настройки' },
     { type: 'divider' },
     {
       key: 'theme',
@@ -88,20 +92,20 @@ const ProfileBlock = () => {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <span>Theme</span>
+          <span>Тема</span>
           <Switch
             checked={themeMode === 'dark'}
             onChange={toggleTheme}
             size="small"
-            aria-label={themeMode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label={themeMode === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
           />
         </div>
       ),
     },
-    { key: 'support', label: 'Support' },
-    { key: 'feedback', label: 'Feedback' },
+    { key: 'support', label: 'Поддержка' },
+    { key: 'feedback', label: 'Обратная связь' },
     { type: 'divider' },
-    { key: 'logout', label: 'Log out' },
+    { key: 'logout', label: 'Выйти' },
   ];
 
   const handleProfileMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -115,7 +119,7 @@ const ProfileBlock = () => {
     <div
       style={{
         padding: 12,
-        borderTop: 'rgba(255, 255, 255, 0.12) 1px solid',
+        borderTop: `1px solid ${token.colorBorderSecondary}`,
         display: 'flex',
         alignItems: 'center',
         gap: 10,
@@ -143,7 +147,7 @@ const ProfileBlock = () => {
           }}
           ellipsis={{ tooltip: email }}
         >
-          {email || 'No email'}
+          {email || 'Нет email'}
         </Text>
       </div>
 
@@ -157,7 +161,7 @@ const ProfileBlock = () => {
         <Button
           type="text"
           icon={<EllipsisOutlined />}
-          aria-label="Profile actions"
+          aria-label="Меню профиля"
           style={{ color: token.colorTextLightSolid }}
           loading={isSigningOut}
         />
@@ -170,12 +174,17 @@ const AppLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const screens = Grid.useBreakpoint();
   const selectedKey = getSelectedMenuKey(location.pathname);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const isCompact = !screens.lg;
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     const nextItem = navigationItems.find((item) => item.key === key);
     if (nextItem) {
       navigate(nextItem.path);
+      if (isCompact) setCollapsed(true);
     }
   };
 
@@ -183,7 +192,16 @@ const AppLayout = () => {
     <>
       <GlobalScrollbarStyles />
       <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-        <Sider width={240} theme="dark">
+        <Sider
+          width={240}
+          collapsedWidth={isCompact ? 0 : 64}
+          theme="dark"
+          collapsible
+          collapsed={isCompact ? collapsed : false}
+          trigger={null}
+          breakpoint="lg"
+          onBreakpoint={(broken) => setCollapsed(broken)}
+        >
           <div
             style={{
               display: 'flex',
@@ -201,7 +219,7 @@ const AppLayout = () => {
               }}
             >
               <Text strong style={{ color: token.colorTextLightSolid, fontSize: 16 }}>
-                Service Desk
+                Сервис Деск
               </Text>
             </div>
 
@@ -219,6 +237,27 @@ const AppLayout = () => {
         </Sider>
 
         <Layout style={{ overflow: 'hidden', minHeight: 0 }}>
+          {isCompact && (
+            <div
+              style={{
+                height: 48,
+                display: 'flex',
+                alignItems: 'center',
+                paddingInline: 16,
+                background: token.colorBgContainer,
+                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                flexShrink: 0,
+              }}
+            >
+              <Button
+                type="text"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setCollapsed((v) => !v)}
+                aria-label="Меню"
+              />
+              <Text strong style={{ marginLeft: 12 }}>Сервис Деск</Text>
+            </div>
+          )}
           <Content
             style={{
               display: 'flex',

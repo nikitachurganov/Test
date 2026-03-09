@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import api from '../lib/api';
 
 export interface SignInPayload {
   email: string;
@@ -6,7 +6,9 @@ export interface SignInPayload {
 }
 
 export interface SignUpPayload {
-  fullName: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string;
   email: string;
   phoneNumber: string;
   password: string;
@@ -16,76 +18,53 @@ export interface SignUpResult {
   requiresEmailConfirmation: boolean;
 }
 
-const getAppBaseUrl = (): string => {
-  const configured = import.meta.env.VITE_APP_URL as string | undefined;
-  if (configured && configured.trim()) {
-    return configured.replace(/\/+$/, '');
-  }
-  return window.location.origin;
-};
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
 
 export const signInWithEmail = async ({
   email,
   password,
 }: SignInPayload): Promise<void> => {
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data } = await api.post<TokenResponse>('/auth/login', {
     email,
     password,
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  localStorage.setItem('access_token', data.access_token);
 };
 
 export const signUpWithEmail = async ({
-  fullName,
+  firstName,
+  lastName,
+  middleName,
   email,
   phoneNumber,
   password,
 }: SignUpPayload): Promise<SignUpResult> => {
-  const { data, error } = await supabase.auth.signUp({
+  const { data } = await api.post<TokenResponse>('/auth/register', {
+    first_name: firstName,
+    last_name: lastName,
+    middle_name: middleName?.trim() || null,
     email,
+    phone_number: phoneNumber,
     password,
-    options: {
-      emailRedirectTo: `${getAppBaseUrl()}/auth`,
-      data: {
-        full_name: fullName,
-        phone_number: phoneNumber,
-      },
-    },
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return {
-    requiresEmailConfirmation: !data.session,
-  };
+  localStorage.setItem('access_token', data.access_token);
+  return { requiresEmailConfirmation: false };
 };
 
 export const signOut = async (): Promise<void> => {
-  const { error } = await supabase.auth.signOut();
-  if (error) {
-    throw new Error(error.message);
-  }
+  localStorage.removeItem('access_token');
 };
 
-export const requestPasswordReset = async (email: string): Promise<void> => {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${getAppBaseUrl()}/auth/reset-password`,
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
+export const requestPasswordReset = async (_email: string): Promise<void> => {
+  // TODO: Implement when the backend adds a forgot-password endpoint.
+  // For now, this is a no-op placeholder so the UI compiles.
+  throw new Error('Password reset is not yet implemented');
 };
 
-export const updatePassword = async (password: string): Promise<void> => {
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) {
-    throw new Error(error.message);
-  }
+export const updatePassword = async (_password: string): Promise<void> => {
+  // TODO: Implement when the backend adds a change-password endpoint.
+  throw new Error('Password update is not yet implemented');
 };
-

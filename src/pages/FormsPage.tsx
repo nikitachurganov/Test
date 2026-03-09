@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  App,
   Button,
+  Card,
+  Empty,
+  Grid,
   Popconfirm,
   Space,
   Table,
   Typography,
-  notification,
   theme,
 } from 'antd';
 import type { TableProps } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { deleteForm, getForms, type FormResponse } from '../shared/api/forms.api';
+import { buildDisplayName } from '../shared/utils/userName';
 
 const { Title } = Typography;
 
@@ -33,6 +37,10 @@ function formatDate(iso: string): string {
 export const FormsPage = () => {
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
+  const contentPadding = isMobile ? token.paddingSM : screens.lg ? token.paddingLG : token.paddingMD;
 
   const [forms, setForms] = useState<FormResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,17 +72,17 @@ export const FormsPage = () => {
       try {
         await deleteForm(id);
         setForms((prev) => prev.filter((f) => f.id !== id));
-        notification.success({ message: 'Форма удалена' });
+        notification.success({ title: 'Форма удалена' });
       } catch (err) {
         notification.error({
-          message: 'Ошибка удаления',
+          title: 'Ошибка удаления',
           description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
         });
       } finally {
         setDeletingId(null);
       }
     },
-    [],
+    [notification],
   );
 
   const columns = useMemo<TableProps<FormResponse>['columns']>(
@@ -83,7 +91,7 @@ export const FormsPage = () => {
         title: 'Название',
         dataIndex: 'name',
         key: 'name',
-        minWidth: 360,
+        minWidth: 260,
         render: (_: unknown, record: FormResponse) => (
           <Link to={`/forms/${record.id}`} style={{ fontWeight: 500 }}>
             {record.name}
@@ -93,14 +101,17 @@ export const FormsPage = () => {
       {
         title: 'Автор',
         key: 'author',
-        width: 160,
-        render: () => '—',
+        width: 220,
+        responsive: ['md'],
+        render: (_: unknown, record: FormResponse) =>
+          record.author ? buildDisplayName(record.author) : 'Неизвестный автор',
       },
       {
         title: 'Дата создания',
         dataIndex: 'created_at',
         key: 'created_at',
         width: 180,
+        responsive: ['lg'],
         render: (value: string) => formatDate(value),
       },
       {
@@ -155,7 +166,7 @@ export const FormsPage = () => {
         style={{
           background: token.colorBgContainer,
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
-          padding: '12px 24px 16px',
+          padding: `${token.paddingSM}px ${contentPadding}px ${token.padding}px`,
           flexShrink: 0,
         }}
       >
@@ -164,6 +175,8 @@ export const FormsPage = () => {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: token.marginSM,
           }}
         >
           <Title level={4} style={{ margin: 0 }}>
@@ -174,6 +187,7 @@ export const FormsPage = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => navigate('/forms/create')}
+            block={isMobile}
           >
             Создать форму
           </Button>
@@ -186,7 +200,7 @@ export const FormsPage = () => {
           flex: 1,
           minHeight: 0,
           overflow: 'auto',
-          padding: 24,
+          padding: contentPadding,
           background: token.colorBgLayout,
         }}
       >
@@ -203,15 +217,63 @@ export const FormsPage = () => {
             }
           />
         ) : (
-          <Table<FormResponse>
-            rowKey="id"
-            loading={loading}
-            dataSource={forms}
-            columns={columns}
-            pagination={{ pageSize: 20, showSizeChanger: true }}
-            scroll={{ x: 800 }}
-            locale={{ emptyText: 'Форм пока нет. Создайте первую!' }}
-          />
+          <>
+            {isMobile ? (
+              loading ? (
+                <Table<FormResponse> rowKey="id" loading dataSource={[]} columns={columns} pagination={false} />
+              ) : forms.length === 0 ? (
+                <Empty description="Форм пока нет. Создайте первую!" />
+              ) : (
+                <Space direction="vertical" size={token.marginSM} style={{ width: '100%' }}>
+                  {forms.map((record) => (
+                    <Card key={record.id} size="small" title={record.name}>
+                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        <Typography.Text type="secondary">
+                          Автор:{' '}
+                          {record.author
+                            ? buildDisplayName(record.author)
+                            : 'Неизвестный автор'}
+                        </Typography.Text>
+                        <Typography.Text type="secondary">
+                          Создано: {formatDate(record.created_at)}
+                        </Typography.Text>
+                        <Space>
+                          <Button size="small" onClick={() => navigate(`/forms/${record.id}`)}>
+                            Открыть
+                          </Button>
+                          <Button size="small" onClick={() => navigate(`/forms/${record.id}/edit`)}>
+                            Изменить
+                          </Button>
+                          <Popconfirm
+                            title="Удалить форму?"
+                            description="Это действие нельзя отменить."
+                            okText="Удалить"
+                            cancelText="Отмена"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={() => handleDelete(record.id)}
+                          >
+                            <Button size="small" danger loading={deletingId === record.id}>
+                              Удалить
+                            </Button>
+                          </Popconfirm>
+                        </Space>
+                      </Space>
+                    </Card>
+                  ))}
+                </Space>
+              )
+            ) : (
+              <Table<FormResponse>
+                rowKey="id"
+                loading={loading}
+                dataSource={forms}
+                columns={columns}
+                pagination={{ pageSize: 20, showSizeChanger: true }}
+                style={{ width: '100%' }}
+                locale={{ emptyText: 'Форм пока нет. Создайте первую!' }}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

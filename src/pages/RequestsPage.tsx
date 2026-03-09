@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  App,
   Button,
+  Card,
+  Empty,
+  Grid,
   Popconfirm,
   Space,
   Table,
   Tag,
   Typography,
-  notification,
   theme,
 } from 'antd';
 import type { TableProps } from 'antd';
@@ -18,6 +21,7 @@ import {
   getRequests,
   type RequestResponse,
 } from '../shared/api/requests.api';
+import { buildDisplayName } from '../shared/utils/userName';
 
 const { Title } = Typography;
 
@@ -39,6 +43,10 @@ function formatDate(iso: string): string {
 export const RequestsPage = () => {
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
+  const contentPadding = isMobile ? token.paddingSM : screens.lg ? token.paddingLG : token.paddingMD;
 
   const [requests, setRequests] = useState<RequestResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,17 +78,17 @@ export const RequestsPage = () => {
       try {
         await deleteRequest(id);
         setRequests((prev) => prev.filter((r) => r.id !== id));
-        notification.success({ message: 'Заявка удалена' });
+        notification.success({ title: 'Заявка удалена' });
       } catch (err) {
         notification.error({
-          message: 'Ошибка удаления',
+          title: 'Ошибка удаления',
           description: err instanceof Error ? err.message : 'Попробуйте ещё раз.',
         });
       } finally {
         setDeletingId(null);
       }
     },
-    [],
+    [notification],
   );
 
   const columns = useMemo<TableProps<RequestResponse>['columns']>(
@@ -101,21 +109,32 @@ export const RequestsPage = () => {
         dataIndex: 'id',
         key: 'id',
         width: 160,
+        responsive: ['md'],
       },
       {
         title: 'Дата создания',
         dataIndex: 'created_at',
         key: 'created_at',
         width: 200,
+        responsive: ['lg'],
         sorter: (a, b) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
         render: (value: string) => formatDate(value),
+      },
+      {
+        title: 'Автор',
+        key: 'author',
+        width: 220,
+        responsive: ['md'],
+        render: (_: unknown, record: RequestResponse) =>
+          record.author ? buildDisplayName(record.author) : 'Неизвестный автор',
       },
       {
         title: 'Дата изменения',
         dataIndex: 'updated_at',
         key: 'updated_at',
         width: 200,
+        responsive: ['xl'],
         sorter: (a, b) =>
           new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime(),
         render: (value: string) => formatDate(value),
@@ -182,7 +201,7 @@ export const RequestsPage = () => {
         style={{
           background: token.colorBgContainer,
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
-          padding: '12px 24px 16px',
+          padding: `${token.paddingSM}px ${contentPadding}px ${token.padding}px`,
           flexShrink: 0,
         }}
       >
@@ -191,6 +210,8 @@ export const RequestsPage = () => {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: token.marginSM,
           }}
         >
           <Title level={4} style={{ margin: 0 }}>
@@ -201,6 +222,7 @@ export const RequestsPage = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => navigate('/requests/create')}
+            block={isMobile}
           >
             Создать заявку
           </Button>
@@ -213,7 +235,7 @@ export const RequestsPage = () => {
           flex: 1,
           minHeight: 0,
           overflow: 'auto',
-          padding: 24,
+          padding: contentPadding,
           background: token.colorBgLayout,
         }}
       >
@@ -230,15 +252,64 @@ export const RequestsPage = () => {
             }
           />
         ) : (
-          <Table<RequestResponse>
-            rowKey="id"
-            loading={loading}
-            dataSource={requests}
-            columns={columns}
-            pagination={{ pageSize: 20, showSizeChanger: true }}
-            scroll={{ x: 900 }}
-            locale={{ emptyText: 'Заявок пока нет. Создайте первую!' }}
-          />
+          <>
+            {isMobile ? (
+              loading ? (
+                <Table<RequestResponse> rowKey="id" loading dataSource={[]} columns={columns} pagination={false} />
+              ) : requests.length === 0 ? (
+                <Empty description="Заявок пока нет. Создайте первую!" />
+              ) : (
+                <Space direction="vertical" size={token.marginSM} style={{ width: '100%' }}>
+                  {requests.map((record) => (
+                    <Card key={record.id} size="small" title={record.title}>
+                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        <Typography.Text type="secondary">№ {record.id}</Typography.Text>
+                        <Typography.Text>
+                          Автор:{' '}
+                          {record.author
+                            ? buildDisplayName(record.author)
+                            : 'Неизвестный автор'}
+                        </Typography.Text>
+                        <Typography.Text type="secondary">
+                          Создано: {formatDate(record.created_at)}
+                        </Typography.Text>
+                        <Tag color={statusView[record.status].color}>
+                          {statusView[record.status].label}
+                        </Tag>
+                        <Space>
+                          <Button size="small" onClick={() => navigate(`/requests/${record.id}`)}>
+                            Открыть
+                          </Button>
+                          <Popconfirm
+                            title="Удалить заявку?"
+                            description="Это действие нельзя отменить."
+                            okText="Удалить"
+                            cancelText="Отмена"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={() => handleDelete(record.id)}
+                          >
+                            <Button size="small" danger loading={deletingId === record.id}>
+                              Удалить
+                            </Button>
+                          </Popconfirm>
+                        </Space>
+                      </Space>
+                    </Card>
+                  ))}
+                </Space>
+              )
+            ) : (
+              <Table<RequestResponse>
+                rowKey="id"
+                loading={loading}
+                dataSource={requests}
+                columns={columns}
+                pagination={{ pageSize: 20, showSizeChanger: true }}
+                style={{ width: '100%' }}
+                locale={{ emptyText: 'Заявок пока нет. Создайте первую!' }}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

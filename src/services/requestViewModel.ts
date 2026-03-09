@@ -1,6 +1,6 @@
-import { supabase } from '../shared/lib/supabase';
+import api from '../shared/lib/api';
 
-// ─── Raw DB row types (narrow projections) ─────────────────────────────────────
+// ─── Raw API response types (narrow projections) ────────────────────────────
 
 interface RequestRow {
   id: string;
@@ -99,9 +99,6 @@ const normalizeOptions = (raw: unknown): RequestViewFieldOption[] => {
         result.push({ id, label });
       }
     } else if (typeof item === 'string' && item.trim()) {
-      // Legacy: only label string was stored
-      // We cannot reconstruct the original ID, but this path is only relevant
-      // for very old data. Use label as ID to keep mapping deterministic.
       const label = item.trim();
       result.push({ id: label, label });
     }
@@ -120,7 +117,6 @@ const collectFieldsFromStructure = (structure: RawStructure): { pages: RawPage[]
       }
     }
   } else if (Array.isArray(structure.fields)) {
-    // No explicit pages, treat as a single implicit page
     pages.push({
       id: structure.id,
       title: structure.title,
@@ -159,7 +155,6 @@ const resolveValue = (
 
   const type = field.type;
 
-  // Multi-choice (checkbox)
   if (type === 'checkbox') {
     const ids = Array.isArray(rawValue) ? rawValue : [];
     const labels = ids
@@ -177,7 +172,6 @@ const resolveValue = (
     return labels.length ? labels : null;
   }
 
-  // Single-choice (radio / dropdown / select)
   if (type === 'radio' || type === 'dropdown' || type === 'select') {
     const valueId = typeof rawValue === 'string' ? rawValue : String(rawValue);
     const matched = field.options.find((opt) => opt.id === valueId);
@@ -187,12 +181,10 @@ const resolveValue = (
     return matched.label;
   }
 
-  // File-like — keep raw value (URL, name, etc.) as-is
   if (type === 'file_image' || type === 'file_vector' || type === 'file_document') {
     return typeof rawValue === 'string' ? rawValue : String(rawValue);
   }
 
-  // Text-like
   if (
     type === 'text' ||
     type === 'shortText' ||
@@ -208,25 +200,14 @@ const resolveValue = (
       : null;
   }
 
-  // Fallback: show stringified value
   return typeof rawValue === 'string' ? rawValue : JSON.stringify(rawValue);
 };
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
 export async function getRequestViewModel(requestId: string): Promise<RequestViewModel> {
-  // 1. Fetch request row
-  const { data: requestRow, error: requestError } = await supabase
-    .from('requests')
-    .select('id, form_id, data, form_snapshot')
-    .eq('id', requestId)
-    .single<RequestRow>();
+  const { data: requestRow } = await api.get<RequestRow>(`/requests/${requestId}`);
 
-  if (requestError || !requestRow) {
-    throw new Error(requestError?.message ?? 'Request not found');
-  }
-
-  // 2. Determine structure source (snapshot preferred)
   let structure: RawStructure | null = null;
   let formTitle = '';
 
@@ -234,18 +215,15 @@ export async function getRequestViewModel(requestId: string): Promise<RequestVie
     structure = requestRow.form_snapshot as RawStructure;
     formTitle = structure.title ?? '';
   } else {
-    const { data: formRow, error: formError } = await supabase
-      .from('forms')
-      .select('id, name, fields')
-      .eq('id', requestRow.form_id)
-      .single<FormRow>();
+    const { data: formRow } = await api.get<FormRow>(`/forms/${requestRow.form_id}`);
 
-    if (formError || !formRow) {
-      throw new Error(formError?.message ?? 'Form not found');
-    }
+    // The API returns `pages` in the response; map it to the fields-based
+    // structure the view-model parser expects.
+    const apiResponse = formRow as any;
+    const rawFields = apiResponse.pages ?? apiResponse.fields ?? {};
 
-    structure = (formRow.fields ?? {}) as RawStructure;
-    formTitle = structure.title ?? formRow.name ?? '';
+    structure = rawFields as RawStructure;
+    formTitle = (structure as any).title ?? formRow.name ?? '';
   }
 
   if (!structure) {
@@ -307,4 +285,3 @@ export async function getRequestViewModel(requestId: string): Promise<RequestVie
     orphanValues,
   };
 }
-

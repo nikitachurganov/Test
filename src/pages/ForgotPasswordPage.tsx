@@ -9,7 +9,7 @@ interface ForgotPasswordFormValues {
 
 const mapResetError = (error: unknown): string => {
   if (!(error instanceof Error)) {
-    return 'Unexpected error. Please try again.';
+    return 'Неожиданная ошибка. Попробуйте ещё раз.';
   }
   return error.message;
 };
@@ -26,7 +26,7 @@ export const ForgotPasswordPage = () => {
 
     try {
       await requestPasswordReset(values.email.trim().toLowerCase());
-      setSuccessText('If an account exists for this email, a reset link has been sent.');
+      setSuccessText('Если аккаунт с этим адресом существует, ссылка для сброса пароля отправлена.');
     } catch (error) {
       setErrorText(mapResetError(error));
     } finally {
@@ -43,15 +43,15 @@ export const ForgotPasswordPage = () => {
       gap={16}
     >
       <Typography.Title level={3} style={{ margin: 0 }}>
-        Service Desk
+        Сервис Деск
       </Typography.Title>
 
       <Card style={{ width: '100%', maxWidth: 420 }}>
         <Typography.Title level={4} style={{ marginTop: 0 }}>
-          Forgot password
+          Забыли пароль
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          Enter your email and we will send a password reset link.
+          Введите адрес электронной почты, и мы отправим ссылку для сброса пароля.
         </Typography.Paragraph>
 
         {successText ? (
@@ -79,23 +79,23 @@ export const ForgotPasswordPage = () => {
         <Form<ForgotPasswordFormValues> layout="vertical" onFinish={handleSubmit} disabled={isSubmitting}>
           <Form.Item
             name="email"
-            label="Email"
+            label="Электронная почта"
             rules={[
-              { required: true, message: 'Email is required' },
-              { type: 'email', message: 'Enter a valid email' },
+              { required: true, message: 'Электронная почта обязательна' },
+              { type: 'email', message: 'Введите действительный адрес электронной почты' },
             ]}
           >
             <Input autoComplete="email" placeholder="name@example.com" />
           </Form.Item>
 
           <Button type="primary" htmlType="submit" block loading={isSubmitting}>
-            Send reset link
+            Отправить ссылку для сброса
           </Button>
         </Form>
       </Card>
 
       <Typography.Text type="secondary">
-        Remembered your password? <Link to="/auth">Back to sign in</Link>
+        Вспомнили пароль? <Link to="/auth">Вернуться ко входу</Link>
       </Typography.Text>
     </Flex>
   );

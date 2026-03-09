@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  App,
   Button,
   Checkbox,
   DatePicker,
@@ -13,7 +14,6 @@ import {
   TimePicker,
   Typography,
   Upload,
-  notification,
   theme,
 } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
@@ -449,6 +449,7 @@ export const FormPreviewModal = ({
 }: FormPreviewModalProps) => {
   const [form] = Form.useForm();
   const { token } = theme.useToken();
+  const { notification } = App.useApp();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -468,7 +469,7 @@ export const FormPreviewModal = ({
       setIsSubmitting(true);
       await new Promise<void>((resolve) => setTimeout(resolve, 500));
       notification.success({
-        message: 'Форма отправлена',
+        title: 'Форма отправлена',
         description: 'Это предпросмотр — данные не сохраняются.',
         placement: 'topRight',
       });
